@@ -604,3 +604,33 @@ input {
     grid-template-columns: 1fr;
   }
 }
+
+.serverDangerBox {
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: rgba(255, 107, 107, 0.08);
+  border: 1px solid rgba(255, 107, 107, 0.28);
+  border-radius: 12px;
+}
+
+.serverDangerBox span {
+  display: block;
+  color: #ffb0b0;
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+
+.serverDangerBox button {
+  width: 100%;
+  border: none;
+  background: rgba(255, 107, 107, 0.16);
+  color: #ffb0b0;
+  padding: 9px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.serverDangerBox button:hover {
+  background: rgba(255, 107, 107, 0.24);
+}

@@ -15,6 +15,7 @@ import {
   query,
   serverTimestamp,
   setDoc,
+  updateDoc,
   where,
 } from "firebase/firestore";
 import { auth, db } from "./firebase";
@@ -25,6 +26,7 @@ const defaultServer = {
   name: "ZapChat",
   inviteCode: null,
   isDefault: true,
+  role: "member",
 };
 
 function App() {
@@ -65,6 +67,9 @@ function App() {
 
   const activeServer =
     servers.find((server) => server.id === activeServerId) || defaultServer;
+
+  const isActiveServerOwner =
+    activeServer.id !== "main" && activeServer.role === "owner";
 
   const filteredMessages = messages.filter(
     (message) => message.channel === activeChannel
@@ -234,7 +239,9 @@ function App() {
       alert(`Sunucu oluşturuldu.\nDavet kodu: ${inviteCode}`);
     } catch (error) {
       console.error("Sunucu oluşturulamadı:", error);
-      setServerModalError("Sunucu oluşturulamadı. Firestore Rules ayarlarını kontrol et.");
+      setServerModalError(
+        "Sunucu oluşturulamadı. Firestore Rules ayarlarını kontrol et."
+      );
     } finally {
       setServerActionLoading(false);
     }
@@ -296,9 +303,52 @@ function App() {
       closeServerModal();
     } catch (error) {
       console.error("Sunucuya katılınamadı:", error);
-      setServerModalError("Sunucuya katılınamadı. Davet kodunu veya Rules ayarlarını kontrol et.");
+      setServerModalError(
+        "Sunucuya katılınamadı. Davet kodunu veya Rules ayarlarını kontrol et."
+      );
     } finally {
       setServerActionLoading(false);
+    }
+  }
+
+  async function deleteActiveServer() {
+    if (!currentUser || activeServer.id === "main") {
+      return;
+    }
+
+    if (activeServer.role !== "owner") {
+      alert("Bu sunucuyu sadece sunucu sahibi silebilir.");
+      return;
+    }
+
+    const shouldDelete = confirm(
+      `"${activeServer.name}" sunucusu silinsin mi?\n\nBu işlem sunucuyu herkesten gizler ve davet kodunu devre dışı bırakır.`
+    );
+
+    if (!shouldDelete) {
+      return;
+    }
+
+    try {
+      await updateDoc(doc(db, "servers", activeServer.id), {
+        deleted: true,
+        deletedAt: serverTimestamp(),
+        deletedByUid: currentUser.uid,
+      });
+
+      if (activeServer.inviteCode) {
+        try {
+          await deleteDoc(doc(db, "inviteCodes", activeServer.inviteCode));
+        } catch (error) {
+          console.warn("Davet kodu silinemedi:", error);
+        }
+      }
+
+      setActiveServerId("main");
+      setActiveChannel("general");
+    } catch (error) {
+      console.error("Sunucu silinemedi:", error);
+      alert("Sunucu silinemedi. Sadece sunucu sahibi silebilir.");
     }
   }
 
@@ -383,28 +433,33 @@ function App() {
             const serverRef = doc(db, "servers", serverId);
             const serverSnap = await getDoc(serverRef);
 
-            if (serverSnap.exists()) {
-              return {
-                id: serverSnap.id,
-                ...serverSnap.data(),
-              };
+            if (!serverSnap.exists()) {
+              return null;
+            }
+
+            const serverData = serverSnap.data();
+
+            if (serverData.deleted === true) {
+              return null;
             }
 
             return {
-              id: serverId,
-              name: membershipData.serverName || "Sunucu",
-              inviteCode: membershipData.inviteCode || null,
+              id: serverSnap.id,
+              role: membershipData.role || "member",
+              ...serverData,
             };
           })
         );
 
-        joinedServers.sort((a, b) => {
+        const cleanServers = joinedServers.filter(Boolean);
+
+        cleanServers.sort((a, b) => {
           const aTime = a.createdAt?.toMillis?.() || 0;
           const bTime = b.createdAt?.toMillis?.() || 0;
           return aTime - bTime;
         });
 
-        setServers([defaultServer, ...joinedServers]);
+        setServers([defaultServer, ...cleanServers]);
       },
       (error) => {
         console.error("Sunucular okunamadı:", error);
@@ -413,6 +468,15 @@ function App() {
 
     return () => unsubscribe();
   }, [currentUser]);
+
+  useEffect(() => {
+    const stillExists = servers.some((server) => server.id === activeServerId);
+
+    if (!stillExists) {
+      setActiveServerId("main");
+      setActiveChannel("general");
+    }
+  }, [servers, activeServerId]);
 
   useEffect(() => {
     if (!currentUser || !activeServerId) {
@@ -560,6 +624,13 @@ function App() {
           </div>
         )}
 
+        {isActiveServerOwner && (
+          <div className="serverDangerBox">
+            <span>Sunucu sahibi</span>
+            <button onClick={deleteActiveServer}>Sunucuyu Sil</button>
+          </div>
+        )}
+
         <div className="usernameBox">
           <label>Kullanıcı adın</label>
           <input
@@ -673,7 +744,9 @@ function App() {
             {!serverModalMode && (
               <>
                 <h2>Sunucu ekle</h2>
-                <p>Yeni bir sunucu oluşturabilir veya davet koduyla katılabilirsin.</p>
+                <p>
+                  Yeni bir sunucu oluşturabilir veya davet koduyla katılabilirsin.
+                </p>
 
                 <div className="serverChoiceGrid">
                   <button onClick={() => setServerModalMode("join")}>
