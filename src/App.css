@@ -284,3 +284,149 @@ input {
   opacity: 0.6;
   cursor: not-allowed;
 }
+
+.authPage {
+  min-height: 100vh;
+  background: #111318;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.authCard {
+  width: min(420px, 100%);
+  background: #171a21;
+  border: 1px solid #252a35;
+  border-radius: 22px;
+  padding: 28px;
+  box-shadow: 0 20px 70px rgba(0, 0, 0, 0.35);
+}
+
+.authLogo {
+  width: 54px;
+  height: 54px;
+  border-radius: 18px;
+  background: #ffb020;
+  color: #111318;
+  display: grid;
+  place-items: center;
+  font-weight: 900;
+  font-size: 24px;
+  margin-bottom: 18px;
+}
+
+.authCard h1 {
+  margin: 0;
+  font-size: 32px;
+}
+
+.authCard p {
+  margin: 8px 0 22px;
+  color: #aeb5c2;
+}
+
+.authCard label {
+  display: block;
+  color: #aeb5c2;
+  font-size: 13px;
+  margin: 14px 0 8px;
+}
+
+.authCard input {
+  width: 100%;
+  border: 1px solid #303644;
+  outline: none;
+  background: #10131a;
+  color: #f5f5f5;
+  padding: 12px 14px;
+  border-radius: 12px;
+}
+
+.authCard input:focus {
+  border-color: #ffb020;
+}
+
+.authActions {
+  display: flex;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.authActions button {
+  flex: 1;
+  border: none;
+  background: #ffb020;
+  color: #111318;
+  padding: 12px;
+  border-radius: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.authActions .secondaryButton {
+  background: #2b3140;
+  color: #ffffff;
+}
+
+.authError {
+  margin-top: 14px;
+  color: #ff8b8b;
+  background: rgba(255, 107, 107, 0.12);
+  border: 1px solid rgba(255, 107, 107, 0.3);
+  padding: 10px 12px;
+  border-radius: 12px;
+  font-size: 14px;
+}
+
+.userBox {
+  margin-top: 16px;
+  padding: 12px;
+  background: #10131a;
+  border: 1px solid #252a35;
+  border-radius: 12px;
+}
+
+.userBox span {
+  display: block;
+  color: #7f8794;
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+
+.userBox strong {
+  display: block;
+  color: #ffffff;
+  font-size: 13px;
+  word-break: break-all;
+}
+
+.userBox button {
+  margin-top: 10px;
+  width: 100%;
+  border: none;
+  background: #2b3140;
+  color: #ffffff;
+  padding: 9px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.userBox button:hover {
+  background: #3a4254;
+}
+
+.deleteButton {
+  border: none;
+  background: transparent;
+  color: #ff6b6b;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+
+.deleteButton:hover {
+  background: rgba(255, 107, 107, 0.14);
+}
