@@ -21,14 +21,6 @@ import {
 import { auth, db } from "./firebase";
 import "./App.css";
 
-const defaultServer = {
-  id: "main",
-  name: "ZapChat",
-  inviteCode: null,
-  isDefault: true,
-  role: "member",
-};
-
 function App() {
   const [username, setUsername] = useState(() => {
     return localStorage.getItem("zapchat-username") || "Guest";
@@ -37,8 +29,8 @@ function App() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
-  const [servers, setServers] = useState([defaultServer]);
-  const [activeServerId, setActiveServerId] = useState("main");
+  const [servers, setServers] = useState([]);
+  const [activeServerId, setActiveServerId] = useState(null);
 
   const [activeChannel, setActiveChannel] = useState("general");
   const [messageText, setMessageText] = useState("");
@@ -66,12 +58,15 @@ function App() {
   ];
 
   const activeServer =
-    servers.find((server) => server.id === activeServerId) || defaultServer;
+    servers.find((server) => server.id === activeServerId) || null;
 
   const isActiveServerOwner =
-    activeServer.id !== "main" &&
+    activeServer &&
     currentUser &&
     activeServer.createdByUid === currentUser.uid;
+
+  const activeChannelName =
+    channels.find((channel) => channel.id === activeChannel)?.name || "genel";
 
   const filteredMessages = messages.filter(
     (message) => message.channel === activeChannel
@@ -317,7 +312,7 @@ function App() {
   }
 
   async function deleteActiveServer() {
-    if (!currentUser || activeServer.id === "main") {
+    if (!currentUser || !activeServer) {
       return;
     }
 
@@ -334,13 +329,17 @@ function App() {
       return;
     }
 
-    try {
-      const deletedServerId = activeServer.id;
+    const deletedServerId = activeServer.id;
+    const previousServers = servers;
+    const previousActiveServerId = activeServerId;
 
-      setServers((currentServers) =>
-        currentServers.filter((server) => server.id !== deletedServerId)
+    try {
+      const remainingServers = servers.filter(
+        (server) => server.id !== deletedServerId
       );
-      setActiveServerId("main");
+
+      setServers(remainingServers);
+      setActiveServerId(remainingServers[0]?.id || null);
       setActiveChannel("general");
       setMessages([]);
 
@@ -359,6 +358,8 @@ function App() {
       }
     } catch (error) {
       console.error("Sunucu silinemedi:", error);
+      setServers(previousServers);
+      setActiveServerId(previousActiveServerId);
       alert("Sunucu silinemedi. Firebase Rules veya bağlantı ayarlarını kontrol et.");
     }
   }
@@ -369,7 +370,7 @@ function App() {
     const cleanText = messageText.trim();
     const cleanUsername = username.trim() || "Guest";
 
-    if (cleanText === "" || !currentUser) {
+    if (cleanText === "" || !currentUser || !activeServerId) {
       return;
     }
 
@@ -422,8 +423,9 @@ function App() {
 
   useEffect(() => {
     if (!currentUser) {
-      setServers([defaultServer]);
-      setActiveServerId("main");
+      setServers([]);
+      setActiveServerId(null);
+      setMessages([]);
       return;
     }
 
@@ -457,11 +459,13 @@ function App() {
               return aTime - bTime;
             });
 
-          setServers([defaultServer, ...cleanServers]);
+          setServers(cleanServers);
         }
 
         if (snapshot.empty) {
-          setServers([defaultServer]);
+          setServers([]);
+          setActiveServerId(null);
+          setMessages([]);
           return;
         }
 
@@ -515,10 +519,19 @@ function App() {
   }, [currentUser]);
 
   useEffect(() => {
+    if (servers.length === 0) {
+      if (activeServerId !== null) {
+        setActiveServerId(null);
+      }
+
+      setActiveChannel("general");
+      return;
+    }
+
     const stillExists = servers.some((server) => server.id === activeServerId);
 
     if (!stillExists) {
-      setActiveServerId("main");
+      setActiveServerId(servers[0].id);
       setActiveChannel("general");
     }
   }, [servers, activeServerId]);
@@ -658,11 +671,11 @@ function App() {
 
       <aside className="channelBar">
         <div className="appTitle">
-          <h1>{activeServer.name}</h1>
-          <p>private lobby</p>
+          <h1>{activeServer ? activeServer.name : "ZapChat"}</h1>
+          <p>{activeServer ? "private lobby" : "sunucu seçilmedi"}</p>
         </div>
 
-        {activeServer.id !== "main" && activeServer.inviteCode && (
+        {activeServer && activeServer.inviteCode && (
           <div className="inviteCodeBox">
             <span>Davet kodu</span>
             <strong>{activeServer.inviteCode}</strong>
@@ -691,92 +704,122 @@ function App() {
           <button onClick={logout}>Çıkış Yap</button>
         </div>
 
-        <div className="channelSectionTitle">Kanallar</div>
+        {activeServer ? (
+          <>
+            <div className="channelSectionTitle">Kanallar</div>
 
-        <div className="channels">
-          {channels.map((channel) => (
-            <button
-              key={channel.id}
-              className={
-                activeChannel === channel.id
-                  ? "channelButton active"
-                  : "channelButton"
-              }
-              onClick={() => setActiveChannel(channel.id)}
-            >
-              <span>#</span>
-              {channel.name}
-            </button>
-          ))}
-        </div>
+            <div className="channels">
+              {channels.map((channel) => (
+                <button
+                  key={channel.id}
+                  className={
+                    activeChannel === channel.id
+                      ? "channelButton active"
+                      : "channelButton"
+                  }
+                  onClick={() => setActiveChannel(channel.id)}
+                >
+                  <span>#</span>
+                  {channel.name}
+                </button>
+              ))}
+            </div>
+          </>
+        ) : (
+          <div className="sidebarHint">
+            Bir sunucuya katılın ya da sunucu oluşturun.
+          </div>
+        )}
       </aside>
 
       <main className="chatArea">
         <header className="chatHeader">
           <div>
-            <h2>
-              {activeServer.name} <span>/ #</span>{" "}
-              {channels.find((c) => c.id === activeChannel).name}
-            </h2>
-            <p>Arkadaşlarınla hızlı ve sade sohbet alanı.</p>
+            {activeServer ? (
+              <>
+                <h2>
+                  {activeServer.name} <span>/ #</span> {activeChannelName}
+                </h2>
+                <p>Arkadaşlarınla hızlı ve sade sohbet alanı.</p>
+              </>
+            ) : (
+              <>
+                <h2>ZapChat</h2>
+                <p>Bir sunucuya katılın ya da sunucu oluşturun.</p>
+              </>
+            )}
           </div>
 
-          <div className="statusBadge">Firebase Online</div>
+          <div className="statusBadge">
+            {activeServer ? "Firebase Online" : "Hazır"}
+          </div>
         </header>
 
-        <section className="messages">
-          {filteredMessages.length === 0 && (
-            <div className="emptyState">
-              Bu kanalda henüz mesaj yok. İlk mesajı sen gönder.
-            </div>
-          )}
-
-          {filteredMessages.map((message) => {
-            const isOwnMessage = message.uid === currentUser.uid;
-
-            return (
-              <div className="message" key={message.id}>
-                <div className="avatar">
-                  {(message.user || "G").charAt(0).toUpperCase()}
+        {activeServer ? (
+          <>
+            <section className="messages">
+              {filteredMessages.length === 0 && (
+                <div className="emptyState">
+                  Bu kanalda henüz mesaj yok. İlk mesajı sen gönder.
                 </div>
+              )}
 
-                <div className="messageContent">
-                  <div className="messageMeta">
-                    <strong>{message.user}</strong>
-                    <span>{message.time}</span>
+              {filteredMessages.map((message) => {
+                const isOwnMessage = message.uid === currentUser.uid;
 
-                    {isOwnMessage && (
-                      <button
-                        className="deleteButton"
-                        onClick={() => deleteMessage(message.id)}
-                      >
-                        Sil
-                      </button>
-                    )}
+                return (
+                  <div className="message" key={message.id}>
+                    <div className="avatar">
+                      {(message.user || "G").charAt(0).toUpperCase()}
+                    </div>
+
+                    <div className="messageContent">
+                      <div className="messageMeta">
+                        <strong>{message.user}</strong>
+                        <span>{message.time}</span>
+
+                        {isOwnMessage && (
+                          <button
+                            className="deleteButton"
+                            onClick={() => deleteMessage(message.id)}
+                          >
+                            Sil
+                          </button>
+                        )}
+                      </div>
+
+                      <p>{message.text}</p>
+                    </div>
                   </div>
+                );
+              })}
 
-                  <p>{message.text}</p>
-                </div>
-              </div>
-            );
-          })}
+              <div ref={messagesEndRef} />
+            </section>
 
-          <div ref={messagesEndRef} />
-        </section>
+            <form className="messageForm" onSubmit={sendMessage}>
+              <input
+                value={messageText}
+                onChange={(event) => setMessageText(event.target.value)}
+                placeholder={`#${activeChannelName} kanalına mesaj gönder`}
+              />
 
-        <form className="messageForm" onSubmit={sendMessage}>
-          <input
-            value={messageText}
-            onChange={(event) => setMessageText(event.target.value)}
-            placeholder={`#${
-              channels.find((c) => c.id === activeChannel).name
-            } kanalına mesaj gönder`}
-          />
-
-          <button type="submit" disabled={isSending}>
-            {isSending ? "..." : "Gönder"}
-          </button>
-        </form>
+              <button type="submit" disabled={isSending}>
+                {isSending ? "..." : "Gönder"}
+              </button>
+            </form>
+          </>
+        ) : (
+          <section className="noServerState">
+            <div className="noServerIcon">+</div>
+            <h2>Bir sunucuya katılın ya da sunucu oluşturun.</h2>
+            <p>
+              Başlamak için soldaki artı butonuna basıp yeni bir sunucu
+              oluşturabilir veya davet koduyla mevcut bir sunucuya katılabilirsin.
+            </p>
+            <button onClick={openServerModal}>Sunucu Ekle</button>
+          </section>
+        )}
       </main>
 
       {serverModalOpen && (

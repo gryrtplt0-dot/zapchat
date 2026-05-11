@@ -29,12 +29,14 @@ input {
   padding: 16px 0;
   gap: 14px;
   border-right: 1px solid #1f232d;
+  overflow-y: auto;
 }
 
 .serverIcon {
   width: 48px;
   height: 48px;
   border-radius: 18px;
+  border: none;
   background: #222733;
   display: grid;
   place-items: center;
@@ -42,6 +44,7 @@ input {
   font-weight: 800;
   cursor: pointer;
   transition: 0.2s;
+  flex-shrink: 0;
 }
 
 .serverIcon:hover,
@@ -49,6 +52,10 @@ input {
   background: #ffb020;
   color: #111318;
   border-radius: 14px;
+}
+
+.createServerIcon {
+  font-size: 22px;
 }
 
 .channelBar {
@@ -69,6 +76,9 @@ input {
   margin: 0;
   font-size: 26px;
   letter-spacing: -0.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .appTitle p {
@@ -100,6 +110,44 @@ input {
 
 .usernameBox input:focus {
   border-color: #ffb020;
+}
+
+.userBox {
+  margin-top: 16px;
+  padding: 12px;
+  background: #10131a;
+  border: 1px solid #252a35;
+  border-radius: 12px;
+}
+
+.userBox span {
+  display: block;
+  color: #7f8794;
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+
+.userBox strong {
+  display: block;
+  color: #ffffff;
+  font-size: 13px;
+  word-break: break-all;
+}
+
+.userBox button {
+  margin-top: 10px;
+  width: 100%;
+  border: none;
+  background: #2b3140;
+  color: #ffffff;
+  padding: 9px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.userBox button:hover {
+  background: #3a4254;
 }
 
 .channelSectionTitle {
@@ -143,6 +191,16 @@ input {
 .channelButton.active {
   background: #2b3140;
   color: #ffffff;
+}
+
+.sidebarHint {
+  margin-top: 18px;
+  color: #8f96a3;
+  border: 1px dashed #303644;
+  padding: 14px;
+  border-radius: 12px;
+  font-size: 14px;
+  line-height: 1.4;
 }
 
 .chatArea {
@@ -271,6 +329,11 @@ input {
   background: #ffc04f;
 }
 
+.messageForm button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .emptyState {
   color: #7f8794;
   border: 1px dashed #303644;
@@ -280,9 +343,72 @@ input {
   margin-top: 12px;
 }
 
-.messageForm button:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
+.noServerState {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  padding: 32px;
+}
+
+.noServerState > div,
+.noServerState > h2,
+.noServerState > p,
+.noServerState > button {
+  max-width: 520px;
+}
+
+.noServerIcon {
+  width: 72px;
+  height: 72px;
+  border-radius: 24px;
+  background: #222733;
+  color: #ffb020;
+  display: grid;
+  place-items: center;
+  font-size: 38px;
+  font-weight: 900;
+  margin-bottom: 18px;
+}
+
+.noServerState h2 {
+  margin: 0;
+  font-size: 28px;
+}
+
+.noServerState p {
+  color: #aeb5c2;
+  line-height: 1.55;
+  margin: 12px 0 22px;
+}
+
+.noServerState button {
+  border: none;
+  background: #ffb020;
+  color: #111318;
+  padding: 13px 18px;
+  border-radius: 14px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.noServerState button:hover {
+  background: #ffc04f;
+}
+
+.deleteButton {
+  border: none;
+  background: transparent;
+  color: #ff6b6b;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+
+.deleteButton:hover {
+  background: rgba(255, 107, 107, 0.14);
 }
 
 .authPage {
@@ -378,59 +504,6 @@ input {
   font-size: 14px;
 }
 
-.userBox {
-  margin-top: 16px;
-  padding: 12px;
-  background: #10131a;
-  border: 1px solid #252a35;
-  border-radius: 12px;
-}
-
-.userBox span {
-  display: block;
-  color: #7f8794;
-  font-size: 12px;
-  margin-bottom: 4px;
-}
-
-.userBox strong {
-  display: block;
-  color: #ffffff;
-  font-size: 13px;
-  word-break: break-all;
-}
-
-.userBox button {
-  margin-top: 10px;
-  width: 100%;
-  border: none;
-  background: #2b3140;
-  color: #ffffff;
-  padding: 9px;
-  border-radius: 10px;
-  cursor: pointer;
-  font-weight: 700;
-}
-
-.userBox button:hover {
-  background: #3a4254;
-}
-
-.deleteButton {
-  border: none;
-  background: transparent;
-  color: #ff6b6b;
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-  padding: 2px 6px;
-  border-radius: 6px;
-}
-
-.deleteButton:hover {
-  background: rgba(255, 107, 107, 0.14);
-}
-
 .inviteCodeBox {
   margin-top: 14px;
   padding: 10px 12px;
@@ -451,6 +524,36 @@ input {
   color: #ffffff;
   font-size: 14px;
   letter-spacing: 0.8px;
+}
+
+.serverDangerBox {
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: rgba(255, 107, 107, 0.08);
+  border: 1px solid rgba(255, 107, 107, 0.28);
+  border-radius: 12px;
+}
+
+.serverDangerBox span {
+  display: block;
+  color: #ffb0b0;
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+
+.serverDangerBox button {
+  width: 100%;
+  border: none;
+  background: rgba(255, 107, 107, 0.16);
+  color: #ffb0b0;
+  padding: 9px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.serverDangerBox button:hover {
+  background: rgba(255, 107, 107, 0.24);
 }
 
 .modalOverlay {
@@ -603,34 +706,20 @@ input {
   .serverChoiceGrid {
     grid-template-columns: 1fr;
   }
-}
 
-.serverDangerBox {
-  margin-top: 10px;
-  padding: 10px 12px;
-  background: rgba(255, 107, 107, 0.08);
-  border: 1px solid rgba(255, 107, 107, 0.28);
-  border-radius: 12px;
-}
+  .channelBar {
+    width: 230px;
+  }
 
-.serverDangerBox span {
-  display: block;
-  color: #ffb0b0;
-  font-size: 12px;
-  margin-bottom: 8px;
-}
+  .chatHeader {
+    padding: 0 16px;
+  }
 
-.serverDangerBox button {
-  width: 100%;
-  border: none;
-  background: rgba(255, 107, 107, 0.16);
-  color: #ffb0b0;
-  padding: 9px;
-  border-radius: 10px;
-  cursor: pointer;
-  font-weight: 800;
-}
+  .messages {
+    padding: 18px;
+  }
 
-.serverDangerBox button:hover {
-  background: rgba(255, 107, 107, 0.24);
+  .messageForm {
+    padding: 14px 18px 18px;
+  }
 }
