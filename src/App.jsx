@@ -10,13 +10,22 @@ import {
   collection,
   deleteDoc,
   doc,
+  getDoc,
   onSnapshot,
-  orderBy,
   query,
   serverTimestamp,
+  setDoc,
+  where,
 } from "firebase/firestore";
 import { auth, db } from "./firebase";
 import "./App.css";
+
+const defaultServer = {
+  id: "main",
+  name: "ZapChat",
+  inviteCode: null,
+  isDefault: true,
+};
 
 function App() {
   const [username, setUsername] = useState(() => {
@@ -25,6 +34,9 @@ function App() {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+
+  const [servers, setServers] = useState([defaultServer]);
+  const [activeServerId, setActiveServerId] = useState("main");
 
   const [activeChannel, setActiveChannel] = useState("general");
   const [messageText, setMessageText] = useState("");
@@ -35,6 +47,13 @@ function App() {
   const [authError, setAuthError] = useState("");
   const [isSending, setIsSending] = useState(false);
 
+  const [serverModalOpen, setServerModalOpen] = useState(false);
+  const [serverModalMode, setServerModalMode] = useState(null);
+  const [newServerName, setNewServerName] = useState("");
+  const [joinInviteCode, setJoinInviteCode] = useState("");
+  const [serverModalError, setServerModalError] = useState("");
+  const [serverActionLoading, setServerActionLoading] = useState(false);
+
   const messagesEndRef = useRef(null);
 
   const channels = [
@@ -43,6 +62,9 @@ function App() {
     { id: "study", name: "ders" },
     { id: "random", name: "rastgele" },
   ];
+
+  const activeServer =
+    servers.find((server) => server.id === activeServerId) || defaultServer;
 
   const filteredMessages = messages.filter(
     (message) => message.channel === activeChannel
@@ -53,6 +75,50 @@ function App() {
     const hour = String(now.getHours()).padStart(2, "0");
     const minute = String(now.getMinutes()).padStart(2, "0");
     return `${hour}:${minute}`;
+  }
+
+  function getServerInitial(serverName) {
+    return (serverName || "Z").charAt(0).toUpperCase();
+  }
+
+  function generateInviteCode() {
+    const firstPart = Math.random().toString(36).slice(2, 6).toUpperCase();
+    const secondPart = Math.random().toString(36).slice(2, 6).toUpperCase();
+    return `${firstPart}-${secondPart}`;
+  }
+
+  async function createUniqueInviteCode() {
+    for (let attempt = 0; attempt < 10; attempt++) {
+      const code = generateInviteCode();
+      const codeRef = doc(db, "inviteCodes", code);
+      const codeSnap = await getDoc(codeRef);
+
+      if (!codeSnap.exists()) {
+        return code;
+      }
+    }
+
+    throw new Error("Davet kodu üretilemedi.");
+  }
+
+  function openServerModal() {
+    setServerModalOpen(true);
+    setServerModalMode(null);
+    setNewServerName("");
+    setJoinInviteCode("");
+    setServerModalError("");
+  }
+
+  function closeServerModal() {
+    if (serverActionLoading) {
+      return;
+    }
+
+    setServerModalOpen(false);
+    setServerModalMode(null);
+    setNewServerName("");
+    setJoinInviteCode("");
+    setServerModalError("");
   }
 
   function getReadableAuthError(error) {
@@ -109,6 +175,133 @@ function App() {
     await signOut(auth);
   }
 
+  async function createServer(event) {
+    event.preventDefault();
+
+    if (!currentUser) {
+      return;
+    }
+
+    const cleanName = newServerName.trim();
+
+    if (cleanName.length < 2) {
+      setServerModalError("Sunucu adı en az 2 karakter olmalı.");
+      return;
+    }
+
+    if (cleanName.length > 32) {
+      setServerModalError("Sunucu adı en fazla 32 karakter olabilir.");
+      return;
+    }
+
+    try {
+      setServerActionLoading(true);
+      setServerModalError("");
+
+      const inviteCode = await createUniqueInviteCode();
+      const serverRef = doc(collection(db, "servers"));
+
+      await setDoc(serverRef, {
+        name: cleanName,
+        inviteCode,
+        createdByUid: currentUser.uid,
+        createdByEmail: currentUser.email,
+        createdAt: serverTimestamp(),
+      });
+
+      await setDoc(doc(db, "inviteCodes", inviteCode), {
+        code: inviteCode,
+        serverId: serverRef.id,
+        serverName: cleanName,
+        createdByUid: currentUser.uid,
+        createdAt: serverTimestamp(),
+      });
+
+      await setDoc(doc(db, "userServers", currentUser.uid, "servers", serverRef.id), {
+        serverId: serverRef.id,
+        serverName: cleanName,
+        uid: currentUser.uid,
+        email: currentUser.email,
+        role: "owner",
+        inviteCode,
+        joinedAt: serverTimestamp(),
+      });
+
+      setActiveServerId(serverRef.id);
+      setActiveChannel("general");
+      closeServerModal();
+
+      alert(`Sunucu oluşturuldu.\nDavet kodu: ${inviteCode}`);
+    } catch (error) {
+      console.error("Sunucu oluşturulamadı:", error);
+      setServerModalError("Sunucu oluşturulamadı. Firestore Rules ayarlarını kontrol et.");
+    } finally {
+      setServerActionLoading(false);
+    }
+  }
+
+  async function joinServer(event) {
+    event.preventDefault();
+
+    if (!currentUser) {
+      return;
+    }
+
+    const cleanCode = joinInviteCode.trim().toUpperCase();
+
+    if (!cleanCode) {
+      setServerModalError("Davet kodunu yazmalısın.");
+      return;
+    }
+
+    try {
+      setServerActionLoading(true);
+      setServerModalError("");
+
+      const inviteRef = doc(db, "inviteCodes", cleanCode);
+      const inviteSnap = await getDoc(inviteRef);
+
+      if (!inviteSnap.exists()) {
+        setServerModalError("Bu davet kodu bulunamadı.");
+        return;
+      }
+
+      const inviteData = inviteSnap.data();
+      const serverId = inviteData.serverId;
+
+      const membershipRef = doc(
+        db,
+        "userServers",
+        currentUser.uid,
+        "servers",
+        serverId
+      );
+
+      const membershipSnap = await getDoc(membershipRef);
+
+      if (!membershipSnap.exists()) {
+        await setDoc(membershipRef, {
+          serverId,
+          serverName: inviteData.serverName,
+          uid: currentUser.uid,
+          email: currentUser.email,
+          role: "member",
+          inviteCode: cleanCode,
+          joinedAt: serverTimestamp(),
+        });
+      }
+
+      setActiveServerId(serverId);
+      setActiveChannel("general");
+      closeServerModal();
+    } catch (error) {
+      console.error("Sunucuya katılınamadı:", error);
+      setServerModalError("Sunucuya katılınamadı. Davet kodunu veya Rules ayarlarını kontrol et.");
+    } finally {
+      setServerActionLoading(false);
+    }
+  }
+
   async function sendMessage(event) {
     event.preventDefault();
 
@@ -123,6 +316,7 @@ function App() {
       setIsSending(true);
 
       await addDoc(collection(db, "messages"), {
+        serverId: activeServerId,
         channel: activeChannel,
         user: cleanUsername,
         email: currentUser.email,
@@ -167,26 +361,97 @@ function App() {
 
   useEffect(() => {
     if (!currentUser) {
+      setServers([defaultServer]);
+      setActiveServerId("main");
+      return;
+    }
+
+    const membershipsRef = collection(
+      db,
+      "userServers",
+      currentUser.uid,
+      "servers"
+    );
+
+    const unsubscribe = onSnapshot(
+      membershipsRef,
+      async (snapshot) => {
+        const joinedServers = await Promise.all(
+          snapshot.docs.map(async (membershipDoc) => {
+            const membershipData = membershipDoc.data();
+            const serverId = membershipData.serverId || membershipDoc.id;
+            const serverRef = doc(db, "servers", serverId);
+            const serverSnap = await getDoc(serverRef);
+
+            if (serverSnap.exists()) {
+              return {
+                id: serverSnap.id,
+                ...serverSnap.data(),
+              };
+            }
+
+            return {
+              id: serverId,
+              name: membershipData.serverName || "Sunucu",
+              inviteCode: membershipData.inviteCode || null,
+            };
+          })
+        );
+
+        joinedServers.sort((a, b) => {
+          const aTime = a.createdAt?.toMillis?.() || 0;
+          const bTime = b.createdAt?.toMillis?.() || 0;
+          return aTime - bTime;
+        });
+
+        setServers([defaultServer, ...joinedServers]);
+      },
+      (error) => {
+        console.error("Sunucular okunamadı:", error);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [currentUser]);
+
+  useEffect(() => {
+    if (!currentUser || !activeServerId) {
       setMessages([]);
       return;
     }
 
     const messagesCollection = collection(db, "messages");
-    const messagesQuery = query(messagesCollection, orderBy("createdAt", "asc"));
+    const messagesQuery = query(
+      messagesCollection,
+      where("serverId", "==", activeServerId)
+    );
 
-    const unsubscribe = onSnapshot(messagesQuery, (snapshot) => {
-      const firebaseMessages = snapshot.docs.map((document) => {
-        return {
-          id: document.id,
-          ...document.data(),
-        };
-      });
+    const unsubscribe = onSnapshot(
+      messagesQuery,
+      (snapshot) => {
+        const firebaseMessages = snapshot.docs.map((document) => {
+          return {
+            id: document.id,
+            ...document.data(),
+          };
+        });
 
-      setMessages(firebaseMessages);
-    });
+        firebaseMessages.sort((a, b) => {
+          const aTime = a.createdAt?.toMillis?.() || 0;
+          const bTime = b.createdAt?.toMillis?.() || 0;
+          return aTime - bTime;
+        });
+
+        setMessages(firebaseMessages);
+      },
+      (error) => {
+        console.error("Mesajlar okunamadı:", error);
+        alert("Mesajlar okunamadı. Firebase Rules ayarlarını kontrol et.");
+      }
+    );
 
     return () => unsubscribe();
-  }, [currentUser]);
+  }, [currentUser, activeServerId]);
 
   useEffect(() => {
     localStorage.setItem("zapchat-username", username);
@@ -239,7 +504,11 @@ function App() {
               Giriş Yap
             </button>
 
-            <button type="button" className="secondaryButton" onClick={createAccount}>
+            <button
+              type="button"
+              className="secondaryButton"
+              onClick={createAccount}
+            >
               Hesap Oluştur
             </button>
           </div>
@@ -251,15 +520,45 @@ function App() {
   return (
     <div className="app">
       <aside className="serverBar">
-        <div className="serverIcon active">Z</div>
-        <div className="serverIcon">+</div>
+        {servers.map((server) => (
+          <button
+            key={server.id}
+            className={
+              activeServerId === server.id
+                ? "serverIcon active"
+                : "serverIcon"
+            }
+            title={server.name}
+            onClick={() => {
+              setActiveServerId(server.id);
+              setActiveChannel("general");
+            }}
+          >
+            {getServerInitial(server.name)}
+          </button>
+        ))}
+
+        <button
+          className="serverIcon createServerIcon"
+          title="Sunucu ekle"
+          onClick={openServerModal}
+        >
+          +
+        </button>
       </aside>
 
       <aside className="channelBar">
         <div className="appTitle">
-          <h1>ZapChat</h1>
+          <h1>{activeServer.name}</h1>
           <p>private lobby</p>
         </div>
+
+        {activeServer.id !== "main" && activeServer.inviteCode && (
+          <div className="inviteCodeBox">
+            <span>Davet kodu</span>
+            <strong>{activeServer.inviteCode}</strong>
+          </div>
+        )}
 
         <div className="usernameBox">
           <label>Kullanıcı adın</label>
@@ -300,7 +599,8 @@ function App() {
         <header className="chatHeader">
           <div>
             <h2>
-              <span>#</span> {channels.find((c) => c.id === activeChannel).name}
+              {activeServer.name} <span>/ #</span>{" "}
+              {channels.find((c) => c.id === activeChannel).name}
             </h2>
             <p>Arkadaşlarınla hızlı ve sade sohbet alanı.</p>
           </div>
@@ -362,6 +662,102 @@ function App() {
           </button>
         </form>
       </main>
+
+      {serverModalOpen && (
+        <div className="modalOverlay" onClick={closeServerModal}>
+          <div className="serverModal" onClick={(event) => event.stopPropagation()}>
+            <button className="modalCloseButton" onClick={closeServerModal}>
+              ×
+            </button>
+
+            {!serverModalMode && (
+              <>
+                <h2>Sunucu ekle</h2>
+                <p>Yeni bir sunucu oluşturabilir veya davet koduyla katılabilirsin.</p>
+
+                <div className="serverChoiceGrid">
+                  <button onClick={() => setServerModalMode("join")}>
+                    <strong>Davet kodu ile katıl</strong>
+                    <span>Arkadaşının verdiği kodla sunucuya gir.</span>
+                  </button>
+
+                  <button onClick={() => setServerModalMode("create")}>
+                    <strong>Sunucu oluştur</strong>
+                    <span>Kendi sohbet alanını oluştur ve kodu paylaş.</span>
+                  </button>
+                </div>
+              </>
+            )}
+
+            {serverModalMode === "create" && (
+              <form onSubmit={createServer}>
+                <button
+                  type="button"
+                  className="modalBackButton"
+                  onClick={() => {
+                    setServerModalMode(null);
+                    setServerModalError("");
+                  }}
+                >
+                  ← Geri
+                </button>
+
+                <h2>Sunucu oluştur</h2>
+                <p>Sunucu oluşturulunca otomatik davet kodu üretilecek.</p>
+
+                <label>Sunucu adı</label>
+                <input
+                  value={newServerName}
+                  onChange={(event) => setNewServerName(event.target.value)}
+                  placeholder="Örn: Bizim Grup"
+                  maxLength={32}
+                />
+
+                {serverModalError && (
+                  <div className="modalError">{serverModalError}</div>
+                )}
+
+                <button className="modalPrimaryButton" disabled={serverActionLoading}>
+                  {serverActionLoading ? "Oluşturuluyor..." : "Sunucu Oluştur"}
+                </button>
+              </form>
+            )}
+
+            {serverModalMode === "join" && (
+              <form onSubmit={joinServer}>
+                <button
+                  type="button"
+                  className="modalBackButton"
+                  onClick={() => {
+                    setServerModalMode(null);
+                    setServerModalError("");
+                  }}
+                >
+                  ← Geri
+                </button>
+
+                <h2>Davet kodu ile katıl</h2>
+                <p>Arkadaşının verdiği davet kodunu yaz.</p>
+
+                <label>Davet kodu</label>
+                <input
+                  value={joinInviteCode}
+                  onChange={(event) => setJoinInviteCode(event.target.value)}
+                  placeholder="Örn: AB12-CD34"
+                />
+
+                {serverModalError && (
+                  <div className="modalError">{serverModalError}</div>
+                )}
+
+                <button className="modalPrimaryButton" disabled={serverActionLoading}>
+                  {serverActionLoading ? "Katılınıyor..." : "Sunucuya Katıl"}
+                </button>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

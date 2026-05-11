@@ -430,3 +430,177 @@ input {
 .deleteButton:hover {
   background: rgba(255, 107, 107, 0.14);
 }
+
+.inviteCodeBox {
+  margin-top: 14px;
+  padding: 10px 12px;
+  background: rgba(255, 176, 32, 0.1);
+  border: 1px solid rgba(255, 176, 32, 0.28);
+  border-radius: 12px;
+}
+
+.inviteCodeBox span {
+  display: block;
+  color: #ffcf7a;
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+
+.inviteCodeBox strong {
+  display: block;
+  color: #ffffff;
+  font-size: 14px;
+  letter-spacing: 0.8px;
+}
+
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.62);
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  z-index: 100;
+}
+
+.serverModal {
+  position: relative;
+  width: min(520px, 100%);
+  background: #171a21;
+  border: 1px solid #303644;
+  border-radius: 22px;
+  padding: 26px;
+  box-shadow: 0 24px 90px rgba(0, 0, 0, 0.45);
+}
+
+.serverModal h2 {
+  margin: 0;
+  font-size: 26px;
+}
+
+.serverModal p {
+  color: #aeb5c2;
+  margin: 8px 0 20px;
+  line-height: 1.45;
+}
+
+.serverModal label {
+  display: block;
+  color: #aeb5c2;
+  font-size: 13px;
+  margin: 16px 0 8px;
+}
+
+.serverModal input {
+  width: 100%;
+  border: 1px solid #303644;
+  outline: none;
+  background: #10131a;
+  color: #f5f5f5;
+  padding: 13px 14px;
+  border-radius: 12px;
+}
+
+.serverModal input:focus {
+  border-color: #ffb020;
+}
+
+.modalCloseButton {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 34px;
+  height: 34px;
+  border: none;
+  border-radius: 10px;
+  background: #222733;
+  color: #ffffff;
+  cursor: pointer;
+  font-size: 22px;
+  line-height: 1;
+}
+
+.modalCloseButton:hover {
+  background: #303644;
+}
+
+.serverChoiceGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.serverChoiceGrid button {
+  border: 1px solid #303644;
+  background: #10131a;
+  color: #ffffff;
+  padding: 18px;
+  border-radius: 16px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.serverChoiceGrid button:hover {
+  border-color: #ffb020;
+  background: #1d222d;
+}
+
+.serverChoiceGrid strong {
+  display: block;
+  margin-bottom: 8px;
+  color: #ffffff;
+}
+
+.serverChoiceGrid span {
+  display: block;
+  color: #aeb5c2;
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.modalBackButton {
+  border: none;
+  background: transparent;
+  color: #ffcf7a;
+  cursor: pointer;
+  font-weight: 700;
+  padding: 0;
+  margin-bottom: 16px;
+}
+
+.modalPrimaryButton {
+  width: 100%;
+  margin-top: 18px;
+  border: none;
+  background: #ffb020;
+  color: #111318;
+  padding: 13px;
+  border-radius: 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.modalPrimaryButton:hover {
+  background: #ffc04f;
+}
+
+.modalPrimaryButton:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.modalError {
+  margin-top: 14px;
+  color: #ff8b8b;
+  background: rgba(255, 107, 107, 0.12);
+  border: 1px solid rgba(255, 107, 107, 0.3);
+  padding: 10px 12px;
+  border-radius: 12px;
+  font-size: 14px;
+}
+
+@media (max-width: 700px) {
+  .serverChoiceGrid {
+    grid-template-columns: 1fr;
+  }
+}
