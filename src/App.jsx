@@ -69,7 +69,9 @@ function App() {
     servers.find((server) => server.id === activeServerId) || defaultServer;
 
   const isActiveServerOwner =
-    activeServer.id !== "main" && activeServer.role === "owner";
+    activeServer.id !== "main" &&
+    currentUser &&
+    activeServer.createdByUid === currentUser.uid;
 
   const filteredMessages = messages.filter(
     (message) => message.channel === activeChannel
@@ -222,15 +224,18 @@ function App() {
         createdAt: serverTimestamp(),
       });
 
-      await setDoc(doc(db, "userServers", currentUser.uid, "servers", serverRef.id), {
-        serverId: serverRef.id,
-        serverName: cleanName,
-        uid: currentUser.uid,
-        email: currentUser.email,
-        role: "owner",
-        inviteCode,
-        joinedAt: serverTimestamp(),
-      });
+      await setDoc(
+        doc(db, "userServers", currentUser.uid, "servers", serverRef.id),
+        {
+          serverId: serverRef.id,
+          serverName: cleanName,
+          uid: currentUser.uid,
+          email: currentUser.email,
+          role: "owner",
+          inviteCode,
+          joinedAt: serverTimestamp(),
+        }
+      );
 
       setActiveServerId(serverRef.id);
       setActiveChannel("general");
@@ -316,13 +321,13 @@ function App() {
       return;
     }
 
-    if (activeServer.role !== "owner") {
+    if (activeServer.createdByUid !== currentUser.uid) {
       alert("Bu sunucuyu sadece sunucu sahibi silebilir.");
       return;
     }
 
     const shouldDelete = confirm(
-      `"${activeServer.name}" sunucusu silinsin mi?\n\nBu işlem sunucuyu herkesten gizler ve davet kodunu devre dışı bırakır.`
+      `"${activeServer.name}" sunucusu kalıcı olarak silinsin mi?`
     );
 
     if (!shouldDelete) {
@@ -330,7 +335,16 @@ function App() {
     }
 
     try {
-      await updateDoc(doc(db, "servers", activeServer.id), {
+      const deletedServerId = activeServer.id;
+
+      setServers((currentServers) =>
+        currentServers.filter((server) => server.id !== deletedServerId)
+      );
+      setActiveServerId("main");
+      setActiveChannel("general");
+      setMessages([]);
+
+      await updateDoc(doc(db, "servers", deletedServerId), {
         deleted: true,
         deletedAt: serverTimestamp(),
         deletedByUid: currentUser.uid,
@@ -343,12 +357,9 @@ function App() {
           console.warn("Davet kodu silinemedi:", error);
         }
       }
-
-      setActiveServerId("main");
-      setActiveChannel("general");
     } catch (error) {
       console.error("Sunucu silinemedi:", error);
-      alert("Sunucu silinemedi. Sadece sunucu sahibi silebilir.");
+      alert("Sunucu silinemedi. Firebase Rules veya bağlantı ayarlarını kontrol et.");
     }
   }
 
@@ -423,50 +434,84 @@ function App() {
       "servers"
     );
 
-    const unsubscribe = onSnapshot(
+    let serverUnsubscribers = [];
+
+    function clearServerUnsubscribers() {
+      serverUnsubscribers.forEach((unsubscribeServer) => unsubscribeServer());
+      serverUnsubscribers = [];
+    }
+
+    const unsubscribeMemberships = onSnapshot(
       membershipsRef,
-      async (snapshot) => {
-        const joinedServers = await Promise.all(
-          snapshot.docs.map(async (membershipDoc) => {
-            const membershipData = membershipDoc.data();
-            const serverId = membershipData.serverId || membershipDoc.id;
-            const serverRef = doc(db, "servers", serverId);
-            const serverSnap = await getDoc(serverRef);
+      (snapshot) => {
+        clearServerUnsubscribers();
 
-            if (!serverSnap.exists()) {
-              return null;
+        const serverMap = new Map();
+
+        function rebuildServers() {
+          const cleanServers = Array.from(serverMap.values())
+            .filter(Boolean)
+            .sort((a, b) => {
+              const aTime = a.createdAt?.toMillis?.() || 0;
+              const bTime = b.createdAt?.toMillis?.() || 0;
+              return aTime - bTime;
+            });
+
+          setServers([defaultServer, ...cleanServers]);
+        }
+
+        if (snapshot.empty) {
+          setServers([defaultServer]);
+          return;
+        }
+
+        snapshot.docs.forEach((membershipDoc) => {
+          const membershipData = membershipDoc.data();
+          const serverId = membershipData.serverId || membershipDoc.id;
+          const serverRef = doc(db, "servers", serverId);
+
+          const unsubscribeServer = onSnapshot(
+            serverRef,
+            (serverSnap) => {
+              if (!serverSnap.exists()) {
+                serverMap.delete(serverId);
+                rebuildServers();
+                return;
+              }
+
+              const serverData = serverSnap.data();
+
+              if (serverData.deleted === true) {
+                serverMap.delete(serverId);
+                rebuildServers();
+                return;
+              }
+
+              serverMap.set(serverId, {
+                id: serverSnap.id,
+                role: membershipData.role || "member",
+                ...serverData,
+              });
+
+              rebuildServers();
+            },
+            (error) => {
+              console.error("Sunucu bilgisi okunamadı:", error);
             }
+          );
 
-            const serverData = serverSnap.data();
-
-            if (serverData.deleted === true) {
-              return null;
-            }
-
-            return {
-              id: serverSnap.id,
-              role: membershipData.role || "member",
-              ...serverData,
-            };
-          })
-        );
-
-        const cleanServers = joinedServers.filter(Boolean);
-
-        cleanServers.sort((a, b) => {
-          const aTime = a.createdAt?.toMillis?.() || 0;
-          const bTime = b.createdAt?.toMillis?.() || 0;
-          return aTime - bTime;
+          serverUnsubscribers.push(unsubscribeServer);
         });
-
-        setServers([defaultServer, ...cleanServers]);
       },
       (error) => {
         console.error("Sunucular okunamadı:", error);
       }
     );
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribeMemberships();
+      clearServerUnsubscribers();
+    };
   }, [currentUser]);
 
   useEffect(() => {
