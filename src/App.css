@@ -396,6 +396,95 @@ input {
   background: #ffc04f;
 }
 
+.memberBar {
+  width: 240px;
+  background: #171a21;
+  border-left: 1px solid #252a35;
+  padding: 18px;
+  overflow-y: auto;
+}
+
+.memberHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 14px;
+  border-bottom: 1px solid #252a35;
+}
+
+.memberHeader h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.memberHeader span {
+  color: #ffcf7a;
+  background: rgba(255, 176, 32, 0.12);
+  border: 1px solid rgba(255, 176, 32, 0.28);
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.memberList {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.memberItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px;
+  border-radius: 12px;
+  background: #10131a;
+  border: 1px solid #252a35;
+}
+
+.memberAvatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: #ffb020;
+  color: #111318;
+  display: grid;
+  place-items: center;
+  font-weight: 900;
+  flex-shrink: 0;
+}
+
+.memberInfo {
+  min-width: 0;
+}
+
+.memberInfo strong {
+  display: block;
+  color: #ffffff;
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.memberInfo span {
+  display: block;
+  color: #8f96a3;
+  font-size: 12px;
+  margin-top: 2px;
+}
+
+.memberEmpty {
+  color: #8f96a3;
+  border: 1px dashed #303644;
+  padding: 14px;
+  border-radius: 12px;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
 .deleteButton {
   border: none;
   background: transparent;
@@ -700,6 +789,12 @@ input {
   padding: 10px 12px;
   border-radius: 12px;
   font-size: 14px;
+}
+
+@media (max-width: 900px) {
+  .memberBar {
+    display: none;
+  }
 }
 
 @media (max-width: 700px) {

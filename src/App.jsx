@@ -35,6 +35,8 @@ function App() {
   const [activeChannel, setActiveChannel] = useState("general");
   const [messageText, setMessageText] = useState("");
   const [messages, setMessages] = useState([]);
+  const [members, setMembers] = useState([]);
+  const [memberError, setMemberError] = useState("");
 
   const [currentUser, setCurrentUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -83,6 +85,14 @@ function App() {
     return (serverName || "Z").charAt(0).toUpperCase();
   }
 
+  function getUserInitial(displayName) {
+    return (displayName || "G").charAt(0).toUpperCase();
+  }
+
+  function getMemberDocumentId(serverId, uid) {
+    return `${serverId}_${uid}`;
+  }
+
   function generateInviteCode() {
     const firstPart = Math.random().toString(36).slice(2, 6).toUpperCase();
     const secondPart = Math.random().toString(36).slice(2, 6).toUpperCase();
@@ -103,8 +113,51 @@ function App() {
     throw new Error("Davet kodu üretilemedi.");
   }
 
+  async function saveMemberProfile(serverId, role) {
+    if (!currentUser || !serverId) {
+      return;
+    }
+
+    const cleanUsername = username.trim() || "Guest";
+    const memberRef = doc(
+      db,
+      "members",
+      getMemberDocumentId(serverId, currentUser.uid)
+    );
+
+    const memberSnap = await getDoc(memberRef);
+
+    if (memberSnap.exists()) {
+      await updateDoc(memberRef, {
+        displayName: cleanUsername,
+        email: currentUser.email,
+        updatedAt: serverTimestamp(),
+      });
+
+      return;
+    }
+
+    await setDoc(memberRef, {
+      serverId,
+      uid: currentUser.uid,
+      email: currentUser.email,
+      displayName: cleanUsername,
+      role,
+      joinedAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+  }
+
   function openServerModal() {
     setServerModalOpen(true);
+    setServerModalMode(null);
+    setNewServerName("");
+    setJoinInviteCode("");
+    setServerModalError("");
+  }
+
+  function resetServerModal() {
+    setServerModalOpen(false);
     setServerModalMode(null);
     setNewServerName("");
     setJoinInviteCode("");
@@ -116,11 +169,7 @@ function App() {
       return;
     }
 
-    setServerModalOpen(false);
-    setServerModalMode(null);
-    setNewServerName("");
-    setJoinInviteCode("");
-    setServerModalError("");
+    resetServerModal();
   }
 
   function getReadableAuthError(error) {
@@ -149,7 +198,6 @@ function App() {
 
   async function createAccount(event) {
     event.preventDefault();
-
     setAuthError("");
 
     try {
@@ -162,7 +210,6 @@ function App() {
 
   async function login(event) {
     event.preventDefault();
-
     setAuthError("");
 
     try {
@@ -199,6 +246,7 @@ function App() {
     try {
       setServerActionLoading(true);
       setServerModalError("");
+      setMemberError("");
 
       const inviteCode = await createUniqueInviteCode();
       const serverRef = doc(collection(db, "servers"));
@@ -234,7 +282,12 @@ function App() {
 
       setActiveServerId(serverRef.id);
       setActiveChannel("general");
-      closeServerModal();
+      resetServerModal();
+
+      saveMemberProfile(serverRef.id, "owner").catch((error) => {
+        console.error("Üye listesi kaydı oluşturulamadı:", error);
+        setMemberError(`Üye kaydı yazılamadı: ${error.message}`);
+      });
 
       alert(`Sunucu oluşturuldu.\nDavet kodu: ${inviteCode}`);
     } catch (error) {
@@ -264,6 +317,7 @@ function App() {
     try {
       setServerActionLoading(true);
       setServerModalError("");
+      setMemberError("");
 
       const inviteRef = doc(db, "inviteCodes", cleanCode);
       const inviteSnap = await getDoc(inviteRef);
@@ -300,7 +354,12 @@ function App() {
 
       setActiveServerId(serverId);
       setActiveChannel("general");
-      closeServerModal();
+      resetServerModal();
+
+      saveMemberProfile(serverId, "member").catch((error) => {
+        console.error("Üye listesi kaydı oluşturulamadı:", error);
+        setMemberError(`Üye kaydı yazılamadı: ${error.message}`);
+      });
     } catch (error) {
       console.error("Sunucuya katılınamadı:", error);
       setServerModalError(
@@ -342,6 +401,7 @@ function App() {
       setActiveServerId(remainingServers[0]?.id || null);
       setActiveChannel("general");
       setMessages([]);
+      setMembers([]);
 
       await updateDoc(doc(db, "servers", deletedServerId), {
         deleted: true,
@@ -426,6 +486,7 @@ function App() {
       setServers([]);
       setActiveServerId(null);
       setMessages([]);
+      setMembers([]);
       return;
     }
 
@@ -466,6 +527,7 @@ function App() {
           setServers([]);
           setActiveServerId(null);
           setMessages([]);
+          setMembers([]);
           return;
         }
 
@@ -537,6 +599,22 @@ function App() {
   }, [servers, activeServerId]);
 
   useEffect(() => {
+    if (!currentUser || !activeServer) {
+      return;
+    }
+
+    const role =
+      activeServer.createdByUid === currentUser.uid
+        ? "owner"
+        : activeServer.role || "member";
+
+    saveMemberProfile(activeServer.id, role).catch((error) => {
+      console.error("Üye profili senkronize edilemedi:", error);
+      setMemberError(`Üye kaydı yazılamadı: ${error.message}`);
+    });
+  }, [currentUser, activeServer, username]);
+
+  useEffect(() => {
     if (!currentUser || !activeServerId) {
       setMessages([]);
       return;
@@ -569,6 +647,52 @@ function App() {
       (error) => {
         console.error("Mesajlar okunamadı:", error);
         alert("Mesajlar okunamadı. Firebase Rules ayarlarını kontrol et.");
+      }
+    );
+
+    return () => unsubscribe();
+  }, [currentUser, activeServerId]);
+
+  useEffect(() => {
+    if (!currentUser || !activeServerId) {
+      setMembers([]);
+      return;
+    }
+
+    const membersCollection = collection(db, "members");
+    const membersQuery = query(
+      membersCollection,
+      where("serverId", "==", activeServerId)
+    );
+
+    const unsubscribe = onSnapshot(
+      membersQuery,
+      (snapshot) => {
+        const firebaseMembers = snapshot.docs.map((memberDoc) => {
+          return {
+            id: memberDoc.id,
+            ...memberDoc.data(),
+          };
+        });
+
+        firebaseMembers.sort((a, b) => {
+          if (a.role === "owner" && b.role !== "owner") {
+            return -1;
+          }
+
+          if (a.role !== "owner" && b.role === "owner") {
+            return 1;
+          }
+
+          return (a.displayName || "").localeCompare(b.displayName || "");
+        });
+
+        setMemberError("");
+        setMembers(firebaseMembers);
+      },
+      (error) => {
+        console.error("Üyeler okunamadı:", error);
+        setMemberError(`Üyeler okunamadı: ${error.message}`);
       }
     );
 
@@ -822,6 +946,38 @@ function App() {
         )}
       </main>
 
+      {activeServer && (
+        <aside className="memberBar">
+          <div className="memberHeader">
+            <h3>Üyeler</h3>
+            <span>{members.length}</span>
+          </div>
+
+          <div className="memberList">
+            {memberError && <div className="memberEmpty">{memberError}</div>}
+
+            {!memberError && members.length === 0 && (
+              <div className="memberEmpty">Henüz üye bilgisi yok.</div>
+            )}
+
+            {members.map((member) => (
+              <div className="memberItem" key={member.id}>
+                <div className="memberAvatar">
+                  {getUserInitial(member.displayName)}
+                </div>
+
+                <div className="memberInfo">
+                  <strong>{member.displayName || "Guest"}</strong>
+                  <span>
+                    {member.role === "owner" ? "Sunucu sahibi" : "Üye"}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </aside>
+      )}
+
       {serverModalOpen && (
         <div className="modalOverlay" onClick={closeServerModal}>
           <div className="serverModal" onClick={(event) => event.stopPropagation()}>
@@ -837,12 +993,22 @@ function App() {
                 </p>
 
                 <div className="serverChoiceGrid">
-                  <button onClick={() => setServerModalMode("join")}>
+                  <button
+                    onClick={() => {
+                      setServerModalMode("join");
+                      setServerModalError("");
+                    }}
+                  >
                     <strong>Davet kodu ile katıl</strong>
                     <span>Arkadaşının verdiği kodla sunucuya gir.</span>
                   </button>
 
-                  <button onClick={() => setServerModalMode("create")}>
+                  <button
+                    onClick={() => {
+                      setServerModalMode("create");
+                      setServerModalError("");
+                    }}
+                  >
                     <strong>Sunucu oluştur</strong>
                     <span>Kendi sohbet alanını oluştur ve kodu paylaş.</span>
                   </button>
