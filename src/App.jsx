@@ -180,6 +180,7 @@ function App() {
   const [speakingUsers, setSpeakingUsers] = useState({});
   const [screenSharing, setScreenSharing] = useState(false);
   const [screenShareStarting, setScreenShareStarting] = useState(false);
+  const [screenShareCollapsed, setScreenShareCollapsed] = useState(false);
   const [activeVoiceChannelId, setActiveVoiceChannelId] = useState(null);
   const [channelActionLoading, setChannelActionLoading] = useState(false);
 
@@ -284,6 +285,14 @@ function App() {
         participant.serverId === activeServerId && participant.channelId === channelId
       );
     });
+  }
+
+  function selectTextChannel(channelId) {
+    setActiveChannel(channelId);
+
+    if (activeScreenShares.length > 0) {
+      setScreenShareCollapsed(true);
+    }
   }
 
   function getCurrentTime() {
@@ -1536,6 +1545,7 @@ function App() {
       screenStreamRef.current = nextScreenStream;
       setLocalScreenStream(nextScreenStream);
       setScreenSharing(true);
+      setScreenShareCollapsed(false);
 
       await updateDoc(participantDocRef.current, {
         screenSharing: true,
@@ -1605,6 +1615,7 @@ function App() {
       setLocalScreenStream(null);
       setScreenSharing(false);
       setScreenShareStarting(false);
+      setScreenShareCollapsed(false);
 
       const renegotiationJobs = [];
 
@@ -1674,6 +1685,7 @@ function App() {
       setLocalScreenStream(null);
       setScreenSharing(false);
       setScreenShareStarting(false);
+      setScreenShareCollapsed(false);
       setSpeakingUsers({});
       setVoiceStatus("Sese katılmadın.");
     }
@@ -2385,7 +2397,7 @@ function App() {
                         ? "channelButton active"
                         : "channelButton"
                     }
-                    onClick={() => setActiveChannel(channel.id)}
+                    onClick={() => selectTextChannel(channel.id)}
                   >
                     <span>#</span>
                     {channel.name}
@@ -2646,7 +2658,13 @@ function App() {
         </header>
 
         {activeServer && voiceJoined && activeScreenShares.length > 0 && (
-          <section className="screenSharePanel">
+          <section
+            className={
+              screenShareCollapsed
+                ? "screenSharePanel collapsed"
+                : "screenSharePanel"
+            }
+          >
             <div className="screenSharePanelHeader">
               <div>
                 <span>Ekran Paylaşımı</span>
@@ -2657,35 +2675,55 @@ function App() {
                 </strong>
               </div>
 
-              {screenSharing && (
-                <button onClick={() => stopScreenShare()}>Paylaşımı Durdur</button>
-              )}
+              <div className="screenSharePanelActions">
+                <button
+                  className="screenShareToggleButton"
+                  onClick={() => setScreenShareCollapsed((isCollapsed) => !isCollapsed)}
+                >
+                  {screenShareCollapsed ? "Genişlet" : "Küçült"}
+                </button>
+
+                {screenSharing && (
+                  <button
+                    className="screenShareStopButton"
+                    onClick={() => stopScreenShare()}
+                  >
+                    Paylaşımı Durdur
+                  </button>
+                )}
+              </div>
             </div>
 
-            <div className="screenShareGrid">
-              {activeScreenShares.map((screenShare) => (
-                <div className="screenShareCard" key={screenShare.uid}>
-                  <div className="screenShareCardTop">
-                    <strong>
-                      {screenShare.displayName || "Guest"}
-                      {screenShare.isLocalShare ? " (sen)" : ""}
-                    </strong>
-                    <span>Canlı</span>
-                  </div>
-
-                  {screenShare.stream ? (
-                    <ScreenShareVideo
-                      stream={screenShare.stream}
-                      muted={screenShare.isLocalShare}
-                    />
-                  ) : (
-                    <div className="screenShareLoading">
-                      Ekran bağlantısı bekleniyor...
+            {screenShareCollapsed ? (
+              <div className="screenShareCollapsedInfo">
+                Ekran paylaşımı arka planda açık. Kanalları ve mesajları kullanmaya devam edebilirsin.
+              </div>
+            ) : (
+              <div className="screenShareGrid">
+                {activeScreenShares.map((screenShare) => (
+                  <div className="screenShareCard" key={screenShare.uid}>
+                    <div className="screenShareCardTop">
+                      <strong>
+                        {screenShare.displayName || "Guest"}
+                        {screenShare.isLocalShare ? " (sen)" : ""}
+                      </strong>
+                      <span>Canlı</span>
                     </div>
-                  )}
-                </div>
-              ))}
-            </div>
+
+                    {screenShare.stream ? (
+                      <ScreenShareVideo
+                        stream={screenShare.stream}
+                        muted={screenShare.isLocalShare}
+                      />
+                    ) : (
+                      <div className="screenShareLoading">
+                        Ekran bağlantısı bekleniyor...
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </section>
         )}
 
