@@ -1535,19 +1535,19 @@ input {
   margin-top: 10px;
   margin-left: 18px;
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  border-radius: 14px;
 }
 
 .voiceActions button {
   min-width: 0;
   border: none;
-  border-radius: 10px;
-  padding: 9px 8px;
+  border-radius: 12px;
   cursor: pointer;
-  font-weight: 800;
-  font-size: 12px;
-  line-height: 1.2;
 }
 
 .voiceActions button:disabled {
@@ -1555,14 +1555,21 @@ input {
   cursor: not-allowed;
 }
 
-.voiceJoinButton {
-  grid-column: 1 / -1;
-  background: #2d333f;
-  color: #ffffff;
+.voiceIconButton {
+  height: 42px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  transition: background 0.18s ease, transform 0.18s ease, color 0.18s ease;
 }
 
-.voiceJoinButton:hover {
-  background: #3a4250;
+.voiceIconButton:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.voiceActionIcon {
+  font-size: 18px;
+  line-height: 1;
 }
 
 .voiceMuteButton {
@@ -1570,8 +1577,17 @@ input {
   color: #ffffff;
 }
 
-.voiceMuteButton:hover {
+.voiceMuteButton:hover:not(:disabled) {
   background: #3a4254;
+}
+
+.voiceMuteButton.muted {
+  background: rgba(255, 107, 107, 0.14);
+  color: #ffb0b0;
+}
+
+.voiceMuteButton.muted:hover:not(:disabled) {
+  background: rgba(255, 107, 107, 0.22);
 }
 
 .screenShareButton {
@@ -1579,27 +1595,30 @@ input {
   color: #9df0c6;
 }
 
-.screenShareButton:hover {
+.screenShareButton:hover:not(:disabled) {
   background: rgba(69, 219, 137, 0.22);
 }
 
 .screenShareButton.active {
-  background: rgba(255, 107, 107, 0.16);
-  color: #ffb0b0;
+  background: rgba(255, 176, 32, 0.16);
+  color: #ffd37f;
 }
 
-.screenShareButton.active:hover {
-  background: rgba(255, 107, 107, 0.24);
+.screenShareButton.active:hover:not(:disabled) {
+  background: rgba(255, 176, 32, 0.24);
 }
 
 .voiceLeaveButton {
-  grid-column: 1 / -1;
   background: rgba(255, 107, 107, 0.16);
   color: #ffb0b0;
 }
 
-.voiceLeaveButton:hover {
+.voiceLeaveButton:hover:not(:disabled) {
   background: rgba(255, 107, 107, 0.24);
+}
+
+.voiceLeaveButton .voiceActionIcon {
+  transform: rotate(135deg);
 }
 
 .voiceStatusText,

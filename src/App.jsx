@@ -3170,27 +3170,38 @@ function App() {
                     {isCurrentVoiceChannel && (
                       <div className="voiceActions">
                         <button
-                          className="voiceMuteButton"
+                          className={
+                            voiceServerMuted || voiceMuted
+                              ? "voiceMuteButton voiceIconButton muted"
+                              : "voiceMuteButton voiceIconButton"
+                          }
                           onClick={toggleVoiceMute}
                           disabled={voiceServerMuted}
                           title={
                             voiceServerMuted
                               ? "Sunucu sahibi mikrofonunu kapattı. Açma izni verilince tekrar açabilirsin."
-                              : "Mikrofonu aç/kapat"
+                              : voiceMuted
+                                ? "Mikrofonu aç"
+                                : "Mikrofonu kapat"
+                          }
+                          aria-label={
+                            voiceServerMuted
+                              ? "Sunucu sahibi tarafından susturuldun"
+                              : voiceMuted
+                                ? "Mikrofonu aç"
+                                : "Mikrofonu kapat"
                           }
                         >
-                          {voiceServerMuted
-                            ? "Susturuldun"
-                            : voiceMuted
-                              ? "Mikrofonu Aç"
-                              : "Mikrofonu Kapat"}
+                          <span className="voiceActionIcon">
+                            {voiceServerMuted ? "⛔" : voiceMuted ? "🔇" : "🎤"}
+                          </span>
                         </button>
 
                         <button
                           className={
                             screenSharing
-                              ? "screenShareButton active"
-                              : "screenShareButton"
+                              ? "screenShareButton voiceIconButton active"
+                              : "screenShareButton voiceIconButton"
                           }
                           onClick={() => {
                             if (screenSharing) {
@@ -3201,19 +3212,33 @@ function App() {
                             startScreenShare();
                           }}
                           disabled={screenShareStarting}
+                          title={
+                            screenShareStarting
+                              ? "Ekran paylaşımı başlatılıyor"
+                              : screenSharing
+                                ? "Ekran paylaşımını durdur"
+                                : "Ekranı paylaş"
+                          }
+                          aria-label={
+                            screenShareStarting
+                              ? "Ekran paylaşımı başlatılıyor"
+                              : screenSharing
+                                ? "Ekran paylaşımını durdur"
+                                : "Ekranı paylaş"
+                          }
                         >
-                          {screenShareStarting
-                            ? "Başlatılıyor..."
-                            : screenSharing
-                              ? "Paylaşımı Durdur"
-                              : "Ekranı Paylaş"}
+                          <span className="voiceActionIcon">
+                            {screenShareStarting ? "…" : "🖥️"}
+                          </span>
                         </button>
 
                         <button
-                          className="voiceLeaveButton"
+                          className="voiceLeaveButton voiceIconButton leave"
                           onClick={() => leaveVoiceRoom()}
+                          title="Sesten ayrıl"
+                          aria-label="Sesten ayrıl"
                         >
-                          Ayrıl
+                          <span className="voiceActionIcon">📞</span>
                         </button>
                       </div>
                     )}
