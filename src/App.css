@@ -791,6 +791,155 @@ input {
   font-size: 14px;
 }
 
+
+.voiceBox {
+  margin-top: 4px;
+  padding: 12px;
+  background: #10131a;
+  border: 1px solid #252a35;
+  border-radius: 14px;
+}
+
+.voiceBox.active {
+  border-color: rgba(255, 176, 32, 0.45);
+  background: rgba(255, 176, 32, 0.08);
+}
+
+.voiceChannelTitle {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.voiceChannelTitle > span {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: #222733;
+  flex-shrink: 0;
+}
+
+.voiceChannelTitle strong {
+  display: block;
+  color: #ffffff;
+  font-size: 14px;
+}
+
+.voiceChannelTitle small {
+  display: block;
+  margin-top: 2px;
+  color: #8f96a3;
+  font-size: 12px;
+}
+
+.voiceActions {
+  margin-top: 12px;
+  display: flex;
+  gap: 8px;
+}
+
+.voiceActions button {
+  flex: 1;
+  border: none;
+  border-radius: 10px;
+  padding: 10px;
+  cursor: pointer;
+  font-weight: 800;
+  font-size: 13px;
+}
+
+.voiceActions button:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.voiceJoinButton {
+  background: #ffb020;
+  color: #111318;
+}
+
+.voiceJoinButton:hover {
+  background: #ffc04f;
+}
+
+.voiceMuteButton {
+  background: #2b3140;
+  color: #ffffff;
+}
+
+.voiceMuteButton:hover {
+  background: #3a4254;
+}
+
+.voiceLeaveButton {
+  background: rgba(255, 107, 107, 0.16);
+  color: #ffb0b0;
+}
+
+.voiceLeaveButton:hover {
+  background: rgba(255, 107, 107, 0.24);
+}
+
+.voiceStatusText {
+  margin: 10px 0 0;
+  color: #8f96a3;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.voiceErrorText {
+  margin-top: 10px;
+  color: #ff8b8b;
+  background: rgba(255, 107, 107, 0.12);
+  border: 1px solid rgba(255, 107, 107, 0.3);
+  padding: 9px 10px;
+  border-radius: 10px;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.voiceRemoteCount {
+  margin-top: 10px;
+  color: #9df0c6;
+  background: rgba(69, 219, 137, 0.1);
+  border: 1px solid rgba(69, 219, 137, 0.26);
+  padding: 8px 10px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.voiceMemberPanel {
+  margin-top: 22px;
+}
+
+.voiceMemberHeader {
+  margin-top: 0;
+}
+
+.voiceMemberList {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.voiceMemberItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px;
+  border-radius: 12px;
+  background: rgba(255, 176, 32, 0.08);
+  border: 1px solid rgba(255, 176, 32, 0.24);
+}
+
+.remoteAudioMount {
+  display: none;
+}
+
 @media (max-width: 900px) {
   .memberBar {
     display: none;

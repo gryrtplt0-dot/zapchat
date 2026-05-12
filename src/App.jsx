@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
 import { useEffect, useRef, useState } from "react";
 import {
   createUserWithEmailAndPassword,
@@ -11,6 +12,7 @@ import {
   deleteDoc,
   doc,
   getDoc,
+  getDocs,
   onSnapshot,
   query,
   serverTimestamp,
@@ -20,6 +22,23 @@ import {
 } from "firebase/firestore";
 import { auth, db } from "./firebase";
 import "./App.css";
+
+const ICE_SERVERS = [
+  { urls: "stun:stun.l.google.com:19302" },
+  { urls: "stun:stun1.l.google.com:19302" },
+];
+
+function RemoteAudio({ stream }) {
+  const audioRef = useRef(null);
+
+  useEffect(() => {
+    if (audioRef.current && stream) {
+      audioRef.current.srcObject = stream;
+    }
+  }, [stream]);
+
+  return <audio ref={audioRef} autoPlay playsInline />;
+}
 
 function App() {
   const [username, setUsername] = useState(() => {
@@ -50,7 +69,23 @@ function App() {
   const [serverModalError, setServerModalError] = useState("");
   const [serverActionLoading, setServerActionLoading] = useState(false);
 
+  const [voiceJoined, setVoiceJoined] = useState(false);
+  const [voiceJoining, setVoiceJoining] = useState(false);
+  const [voiceMuted, setVoiceMuted] = useState(false);
+  const [voiceParticipants, setVoiceParticipants] = useState([]);
+  const [voiceStatus, setVoiceStatus] = useState("Sese katılmadın.");
+  const [voiceError, setVoiceError] = useState("");
+  const [remoteStreams, setRemoteStreams] = useState([]);
+
   const messagesEndRef = useRef(null);
+  const localStreamRef = useRef(null);
+  const peerConnectionsRef = useRef(new Map());
+  const pendingIceCandidatesRef = useRef(new Map());
+  const signalUnsubscribeRef = useRef(null);
+  const participantDocRef = useRef(null);
+  const voiceRoomIdRef = useRef(null);
+  const voiceJoinedRef = useRef(false);
+  const voiceMutedRef = useRef(false);
 
   const channels = [
     { id: "general", name: "genel" },
@@ -74,6 +109,10 @@ function App() {
     (message) => message.channel === activeChannel
   );
 
+  const activeVoiceParticipants = voiceParticipants.filter(
+    (participant) => participant.serverId === activeServerId
+  );
+
   function getCurrentTime() {
     const now = new Date();
     const hour = String(now.getHours()).padStart(2, "0");
@@ -91,6 +130,10 @@ function App() {
 
   function getMemberDocumentId(serverId, uid) {
     return `${serverId}_${uid}`;
+  }
+
+  function getVoiceRoomId(serverId) {
+    return `${serverId}_main_voice`;
   }
 
   function generateInviteCode() {
@@ -221,6 +264,7 @@ function App() {
   }
 
   async function logout() {
+    await leaveVoiceRoom();
     await signOut(auth);
   }
 
@@ -472,6 +516,441 @@ function App() {
     }
   }
 
+  function getVoiceParticipantName(uid) {
+    if (uid === currentUser?.uid) {
+      return username.trim() || "Guest";
+    }
+
+    return (
+      voiceParticipants.find((participant) => participant.uid === uid)
+        ?.displayName || "Bilinmeyen kullanıcı"
+    );
+  }
+
+  async function sendVoiceSignal(targetUid, type, payload) {
+    if (!voiceRoomIdRef.current || !currentUser) {
+      return;
+    }
+
+    const signalInboxRef = collection(
+      db,
+      "voiceRooms",
+      voiceRoomIdRef.current,
+      "signals",
+      targetUid,
+      "items"
+    );
+
+    await addDoc(signalInboxRef, {
+      roomId: voiceRoomIdRef.current,
+      fromUid: currentUser.uid,
+      fromName: username.trim() || "Guest",
+      toUid: targetUid,
+      type,
+      payload,
+      createdAt: serverTimestamp(),
+    });
+  }
+
+  async function clearVoiceSignalInbox(roomId, uid) {
+    const inboxRef = collection(
+      db,
+      "voiceRooms",
+      roomId,
+      "signals",
+      uid,
+      "items"
+    );
+
+    const inboxSnapshot = await getDocs(inboxRef);
+    const deleteJobs = inboxSnapshot.docs.map((signalDoc) =>
+      deleteDoc(signalDoc.ref)
+    );
+
+    await Promise.all(deleteJobs);
+  }
+
+  async function flushPendingIceCandidates(uid, peerConnection) {
+    const pendingCandidates = pendingIceCandidatesRef.current.get(uid) || [];
+
+    if (pendingCandidates.length === 0) {
+      return;
+    }
+
+    for (const candidate of pendingCandidates) {
+      try {
+        await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+      } catch (error) {
+        console.warn("Bekleyen ICE candidate eklenemedi:", error);
+      }
+    }
+
+    pendingIceCandidatesRef.current.delete(uid);
+  }
+
+  function removeRemoteStream(uid) {
+    setRemoteStreams((previousStreams) =>
+      previousStreams.filter((remoteStream) => remoteStream.uid !== uid)
+    );
+  }
+
+  function closePeerConnection(uid) {
+    const peerConnection = peerConnectionsRef.current.get(uid);
+
+    if (peerConnection) {
+      peerConnection.onicecandidate = null;
+      peerConnection.ontrack = null;
+      peerConnection.onconnectionstatechange = null;
+      peerConnection.close();
+    }
+
+    peerConnectionsRef.current.delete(uid);
+    pendingIceCandidatesRef.current.delete(uid);
+    removeRemoteStream(uid);
+  }
+
+  async function createPeerConnection(remoteUid, shouldCreateOffer) {
+    if (!currentUser || !localStreamRef.current || !voiceRoomIdRef.current) {
+      return null;
+    }
+
+    const existingPeerConnection = peerConnectionsRef.current.get(remoteUid);
+
+    if (existingPeerConnection) {
+      return existingPeerConnection;
+    }
+
+    const peerConnection = new RTCPeerConnection({
+      iceServers: ICE_SERVERS,
+    });
+
+    peerConnectionsRef.current.set(remoteUid, peerConnection);
+
+    localStreamRef.current.getTracks().forEach((track) => {
+      peerConnection.addTrack(track, localStreamRef.current);
+    });
+
+    peerConnection.onicecandidate = (event) => {
+      if (event.candidate) {
+        sendVoiceSignal(remoteUid, "candidate", event.candidate.toJSON()).catch(
+          (error) => {
+            console.error("ICE candidate gönderilemedi:", error);
+          }
+        );
+      }
+    };
+
+    peerConnection.ontrack = (event) => {
+      const [stream] = event.streams;
+
+      if (!stream) {
+        return;
+      }
+
+      setRemoteStreams((previousStreams) => {
+        const withoutOldStream = previousStreams.filter(
+          (remoteStream) => remoteStream.uid !== remoteUid
+        );
+
+        return [...withoutOldStream, { uid: remoteUid, stream }];
+      });
+
+      setVoiceStatus("Ses bağlantısı aktif.");
+    };
+
+    peerConnection.onconnectionstatechange = () => {
+      const state = peerConnection.connectionState;
+
+      if (state === "connected") {
+        setVoiceStatus("Ses bağlantısı aktif.");
+        return;
+      }
+
+      if (state === "failed" || state === "disconnected" || state === "closed") {
+        removeRemoteStream(remoteUid);
+      }
+    };
+
+    if (shouldCreateOffer) {
+      try {
+        const offer = await peerConnection.createOffer();
+        await peerConnection.setLocalDescription(offer);
+
+        await sendVoiceSignal(remoteUid, "offer", {
+          type: peerConnection.localDescription.type,
+          sdp: peerConnection.localDescription.sdp,
+        });
+      } catch (error) {
+        console.error("Ses teklifi oluşturulamadı:", error);
+        setVoiceError(
+          `${getVoiceParticipantName(remoteUid)} ile ses bağlantısı başlatılamadı.`
+        );
+      }
+    }
+
+    return peerConnection;
+  }
+
+  function setupVoiceSignalListener(roomId) {
+    if (!currentUser) {
+      return;
+    }
+
+    if (signalUnsubscribeRef.current) {
+      signalUnsubscribeRef.current();
+      signalUnsubscribeRef.current = null;
+    }
+
+    const inboxRef = collection(
+      db,
+      "voiceRooms",
+      roomId,
+      "signals",
+      currentUser.uid,
+      "items"
+    );
+
+    signalUnsubscribeRef.current = onSnapshot(
+      inboxRef,
+      (snapshot) => {
+        snapshot.docChanges().forEach((change) => {
+          if (change.type !== "added") {
+            return;
+          }
+
+          const signalDoc = change.doc;
+          const signal = signalDoc.data();
+
+          if (!signal.fromUid || signal.fromUid === currentUser.uid) {
+            deleteDoc(signalDoc.ref).catch((error) => {
+              console.warn("Ses sinyali temizlenemedi:", error);
+            });
+            return;
+          }
+
+          async function handleSignal() {
+            try {
+              const peerConnection =
+                peerConnectionsRef.current.get(signal.fromUid) ||
+                (await createPeerConnection(signal.fromUid, false));
+
+              if (!peerConnection) {
+                return;
+              }
+
+              if (signal.type === "offer") {
+                await peerConnection.setRemoteDescription(
+                  new RTCSessionDescription(signal.payload)
+                );
+                await flushPendingIceCandidates(signal.fromUid, peerConnection);
+
+                const answer = await peerConnection.createAnswer();
+                await peerConnection.setLocalDescription(answer);
+
+                await sendVoiceSignal(signal.fromUid, "answer", {
+                  type: peerConnection.localDescription.type,
+                  sdp: peerConnection.localDescription.sdp,
+                });
+              }
+
+              if (signal.type === "answer") {
+                if (peerConnection.signalingState !== "stable") {
+                  await peerConnection.setRemoteDescription(
+                    new RTCSessionDescription(signal.payload)
+                  );
+                  await flushPendingIceCandidates(signal.fromUid, peerConnection);
+                }
+              }
+
+              if (signal.type === "candidate") {
+                if (peerConnection.remoteDescription?.type) {
+                  await peerConnection.addIceCandidate(
+                    new RTCIceCandidate(signal.payload)
+                  );
+                } else {
+                  const pendingCandidates =
+                    pendingIceCandidatesRef.current.get(signal.fromUid) || [];
+                  pendingCandidates.push(signal.payload);
+                  pendingIceCandidatesRef.current.set(
+                    signal.fromUid,
+                    pendingCandidates
+                  );
+                }
+              }
+            } catch (error) {
+              console.error("Ses sinyali işlenemedi:", error);
+              setVoiceError("Ses bağlantısı kurulurken bir hata oluştu.");
+            } finally {
+              deleteDoc(signalDoc.ref).catch((error) => {
+                console.warn("Ses sinyali temizlenemedi:", error);
+              });
+            }
+          }
+
+          handleSignal();
+        });
+      },
+      (error) => {
+        console.error("Ses sinyalleri dinlenemedi:", error);
+        setVoiceError(`Ses sinyalleri okunamadı: ${error.message}`);
+      }
+    );
+  }
+
+  function stopLocalVoiceStream() {
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach((track) => track.stop());
+      localStreamRef.current = null;
+    }
+  }
+
+  async function leaveVoiceRoom(updateState = true) {
+    const participantRef = participantDocRef.current;
+
+    voiceJoinedRef.current = false;
+
+    if (signalUnsubscribeRef.current) {
+      signalUnsubscribeRef.current();
+      signalUnsubscribeRef.current = null;
+    }
+
+    peerConnectionsRef.current.forEach((_, uid) => {
+      closePeerConnection(uid);
+    });
+
+    peerConnectionsRef.current.clear();
+    pendingIceCandidatesRef.current.clear();
+    stopLocalVoiceStream();
+
+    participantDocRef.current = null;
+    voiceRoomIdRef.current = null;
+
+    if (updateState) {
+      setVoiceJoined(false);
+      setVoiceJoining(false);
+      setRemoteStreams([]);
+      setVoiceStatus("Sese katılmadın.");
+    }
+
+    if (participantRef) {
+      try {
+        await deleteDoc(participantRef);
+      } catch (error) {
+        console.warn("Ses katılımcısı silinemedi:", error);
+      }
+    }
+  }
+
+  async function joinVoiceRoom() {
+    if (!currentUser || !activeServerId || voiceJoining || voiceJoined) {
+      return;
+    }
+
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setVoiceError("Bu tarayıcı mikrofon erişimini desteklemiyor.");
+      return;
+    }
+
+    const roomId = getVoiceRoomId(activeServerId);
+
+    try {
+      setVoiceJoining(true);
+      setVoiceError("");
+      setVoiceStatus("Mikrofon izni bekleniyor...");
+
+      const localStream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+        video: false,
+      });
+
+      localStream.getAudioTracks().forEach((track) => {
+        track.enabled = !voiceMutedRef.current;
+      });
+
+      localStreamRef.current = localStream;
+      voiceRoomIdRef.current = roomId;
+
+      await setDoc(
+        doc(db, "voiceRooms", roomId),
+        {
+          serverId: activeServerId,
+          channelId: "main_voice",
+          name: "Sesli Sohbet",
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      const participantRef = doc(
+        db,
+        "voiceRooms",
+        roomId,
+        "participants",
+        currentUser.uid
+      );
+
+      participantDocRef.current = participantRef;
+
+      await clearVoiceSignalInbox(roomId, currentUser.uid);
+
+      await setDoc(
+        participantRef,
+        {
+          serverId: activeServerId,
+          uid: currentUser.uid,
+          email: currentUser.email,
+          displayName: username.trim() || "Guest",
+          muted: voiceMutedRef.current,
+          joinedAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      setupVoiceSignalListener(roomId);
+
+      voiceJoinedRef.current = true;
+      setVoiceJoined(true);
+      setVoiceStatus("Ses odasına katıldın.");
+    } catch (error) {
+      console.error("Ses odasına katılınamadı:", error);
+      setVoiceError(
+        "Ses odasına katılınamadı. Mikrofon iznini ve Firebase Rules ayarlarını kontrol et."
+      );
+      await leaveVoiceRoom(true);
+    } finally {
+      setVoiceJoining(false);
+    }
+  }
+
+  async function toggleVoiceMute() {
+    const nextMuted = !voiceMuted;
+
+    voiceMutedRef.current = nextMuted;
+    setVoiceMuted(nextMuted);
+
+    if (localStreamRef.current) {
+      localStreamRef.current.getAudioTracks().forEach((track) => {
+        track.enabled = !nextMuted;
+      });
+    }
+
+    if (participantDocRef.current) {
+      try {
+        await updateDoc(participantDocRef.current, {
+          muted: nextMuted,
+          updatedAt: serverTimestamp(),
+        });
+      } catch (error) {
+        console.warn("Mikrofon durumu güncellenemedi:", error);
+      }
+    }
+  }
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setCurrentUser(user);
@@ -700,6 +1179,123 @@ function App() {
   }, [currentUser, activeServerId]);
 
   useEffect(() => {
+    if (!currentUser || !activeServerId) {
+      setVoiceParticipants([]);
+      return;
+    }
+
+    const roomId = getVoiceRoomId(activeServerId);
+    const participantsRef = collection(
+      db,
+      "voiceRooms",
+      roomId,
+      "participants"
+    );
+
+    const unsubscribe = onSnapshot(
+      participantsRef,
+      (snapshot) => {
+        const firebaseVoiceParticipants = snapshot.docs.map((participantDoc) => {
+          return {
+            id: participantDoc.id,
+            ...participantDoc.data(),
+          };
+        });
+
+        firebaseVoiceParticipants.sort((a, b) => {
+          const aName = a.displayName || a.email || "";
+          const bName = b.displayName || b.email || "";
+          return aName.localeCompare(bName);
+        });
+
+        setVoiceParticipants(firebaseVoiceParticipants);
+      },
+      (error) => {
+        console.error("Ses katılımcıları okunamadı:", error);
+        setVoiceError(`Ses katılımcıları okunamadı: ${error.message}`);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [currentUser, activeServerId]);
+
+  useEffect(() => {
+    if (!voiceJoined || !currentUser || !activeServerId || !localStreamRef.current) {
+      return;
+    }
+
+    const participantUids = new Set(
+      activeVoiceParticipants.map((participant) => participant.uid)
+    );
+
+    peerConnectionsRef.current.forEach((_, uid) => {
+      if (!participantUids.has(uid)) {
+        closePeerConnection(uid);
+      }
+    });
+
+    activeVoiceParticipants.forEach((participant) => {
+      if (participant.uid === currentUser.uid) {
+        return;
+      }
+
+      if (peerConnectionsRef.current.has(participant.uid)) {
+        return;
+      }
+
+      const shouldCreateOffer = currentUser.uid < participant.uid;
+
+      if (shouldCreateOffer) {
+        createPeerConnection(participant.uid, true).catch((error) => {
+          console.error("Ses bağlantısı oluşturulamadı:", error);
+          setVoiceError("Ses bağlantısı oluşturulamadı.");
+        });
+      }
+    });
+  }, [voiceJoined, activeVoiceParticipants, currentUser, activeServerId]);
+
+  useEffect(() => {
+    if (!voiceJoined || !participantDocRef.current) {
+      return;
+    }
+
+    updateDoc(participantDocRef.current, {
+      displayName: username.trim() || "Guest",
+      muted: voiceMutedRef.current,
+      updatedAt: serverTimestamp(),
+    }).catch((error) => {
+      console.warn("Ses katılımcısı güncellenemedi:", error);
+    });
+  }, [username, voiceJoined]);
+
+  useEffect(() => {
+    voiceMutedRef.current = voiceMuted;
+  }, [voiceMuted]);
+
+  useEffect(() => {
+    if (!voiceJoinedRef.current) {
+      return;
+    }
+
+    if (!currentUser || !activeServerId) {
+      leaveVoiceRoom();
+      return;
+    }
+
+    const currentRoomId = getVoiceRoomId(activeServerId);
+
+    if (voiceRoomIdRef.current && voiceRoomIdRef.current !== currentRoomId) {
+      leaveVoiceRoom();
+    }
+  }, [currentUser, activeServerId]);
+
+  useEffect(() => {
+    return () => {
+      leaveVoiceRoom(false);
+    };
+  }, []);
+
+  useEffect(() => {
     localStorage.setItem("zapchat-username", username);
   }, [username]);
 
@@ -848,6 +1444,53 @@ function App() {
                 </button>
               ))}
             </div>
+
+            <div className="channelSectionTitle">Ses</div>
+
+            <div className={voiceJoined ? "voiceBox active" : "voiceBox"}>
+              <div className="voiceChannelTitle">
+                <span>🔊</span>
+                <div>
+                  <strong>Sesli Sohbet</strong>
+                  <small>{activeVoiceParticipants.length} kişi bağlı</small>
+                </div>
+              </div>
+
+              <div className="voiceActions">
+                {!voiceJoined ? (
+                  <button
+                    className="voiceJoinButton"
+                    onClick={joinVoiceRoom}
+                    disabled={voiceJoining}
+                  >
+                    {voiceJoining ? "Katılınıyor..." : "Sese Katıl"}
+                  </button>
+                ) : (
+                  <>
+                    <button className="voiceMuteButton" onClick={toggleVoiceMute}>
+                      {voiceMuted ? "Mikrofonu Aç" : "Mikrofonu Kapat"}
+                    </button>
+
+                    <button
+                      className="voiceLeaveButton"
+                      onClick={() => leaveVoiceRoom()}
+                    >
+                      Ayrıl
+                    </button>
+                  </>
+                )}
+              </div>
+
+              <p className="voiceStatusText">{voiceStatus}</p>
+
+              {voiceError && <div className="voiceErrorText">{voiceError}</div>}
+
+              {voiceJoined && remoteStreams.length > 0 && (
+                <div className="voiceRemoteCount">
+                  {remoteStreams.length} uzak ses bağlantısı aktif.
+                </div>
+              )}
+            </div>
           </>
         ) : (
           <div className="sidebarHint">
@@ -975,8 +1618,43 @@ function App() {
               </div>
             ))}
           </div>
+
+          <div className="voiceMemberPanel">
+            <div className="memberHeader voiceMemberHeader">
+              <h3>Seste</h3>
+              <span>{activeVoiceParticipants.length}</span>
+            </div>
+
+            <div className="voiceMemberList">
+              {activeVoiceParticipants.length === 0 && (
+                <div className="memberEmpty">Şu an seste kimse yok.</div>
+              )}
+
+              {activeVoiceParticipants.map((participant) => (
+                <div className="voiceMemberItem" key={participant.uid}>
+                  <div className="memberAvatar">
+                    {getUserInitial(participant.displayName)}
+                  </div>
+
+                  <div className="memberInfo">
+                    <strong>{participant.displayName || "Guest"}</strong>
+                    <span>{participant.muted ? "Mikrofon kapalı" : "Konuşabilir"}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         </aside>
       )}
+
+      <div className="remoteAudioMount" aria-hidden="true">
+        {remoteStreams.map((remoteStream) => (
+          <RemoteAudio
+            key={remoteStream.uid}
+            stream={remoteStream.stream}
+          />
+        ))}
+      </div>
 
       {serverModalOpen && (
         <div className="modalOverlay" onClick={closeServerModal}>
