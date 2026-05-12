@@ -298,13 +298,16 @@ function ScreenShareViewerBox({
             <div
               className={fullscreen ? "screenPointerMarker fullscreen" : "screenPointerMarker"}
               key={pointer.id}
+              title={`${pointer.markerName || "Guest"} işaretledi`}
               style={{
                 left: `${pointer.xPercent}%`,
                 top: `${pointer.yPercent}%`,
               }}
             >
-              <span className="screenPointerDot" />
-              <span className="screenPointerLabel">
+              <span className="screenPointerPin" aria-hidden="true">
+                📌
+              </span>
+              <span className="screenPointerTooltip">
                 {pointer.markerName || "Guest"}
               </span>
             </div>
