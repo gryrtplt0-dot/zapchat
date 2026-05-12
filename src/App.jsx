@@ -119,38 +119,6 @@ function RemoteAudio({ stream }) {
   return <audio ref={audioRef} autoPlay playsInline />;
 }
 
-function getVideoContentBox(viewerElement, videoElement) {
-  if (!viewerElement || !videoElement) {
-    return null;
-  }
-
-  const viewerRect = viewerElement.getBoundingClientRect();
-  const videoRect = videoElement.getBoundingClientRect();
-
-  if (videoRect.width <= 0 || videoRect.height <= 0) {
-    return null;
-  }
-
-  const videoWidth = videoElement.videoWidth || 16;
-  const videoHeight = videoElement.videoHeight || 9;
-  const videoAspect = videoWidth / videoHeight;
-  const boxAspect = videoRect.width / videoRect.height;
-
-  let width = videoRect.width;
-  let height = videoRect.height;
-  let left = videoRect.left - viewerRect.left;
-  let top = videoRect.top - viewerRect.top;
-
-  if (boxAspect > videoAspect) {
-    width = videoRect.height * videoAspect;
-    left += (videoRect.width - width) / 2;
-  } else if (boxAspect < videoAspect) {
-    height = videoRect.width / videoAspect;
-    top += (videoRect.height - height) / 2;
-  }
-
-  return { left, top, width, height };
-}
 
 function ScreenShareVideo({ stream, muted = false, videoRef, onVideoReady }) {
   const fallbackVideoRef = useRef(null);
@@ -175,151 +143,10 @@ function ScreenShareVideo({ stream, muted = false, videoRef, onVideoReady }) {
   );
 }
 
-function ScreenShareViewerBox({
-  screenShare,
-  pointers,
-  muted,
-  fullscreen = false,
-  onPointer,
-  onPointerOutsideVideo,
-}) {
-  const viewerRef = useRef(null);
-  const videoRef = useRef(null);
-  const [contentBox, setContentBox] = useState(null);
-
-  function updateContentBox() {
-    const nextContentBox = getVideoContentBox(viewerRef.current, videoRef.current);
-    setContentBox(nextContentBox);
-  }
-
-  useEffect(() => {
-    updateContentBox();
-
-    const viewerElement = viewerRef.current;
-    const videoElement = videoRef.current;
-
-    let resizeObserver = null;
-
-    if (typeof ResizeObserver !== "undefined") {
-      resizeObserver = new ResizeObserver(updateContentBox);
-
-      if (viewerElement) {
-        resizeObserver.observe(viewerElement);
-      }
-
-      if (videoElement) {
-        resizeObserver.observe(videoElement);
-      }
-    }
-
-    window.addEventListener("resize", updateContentBox);
-
-    const intervalId = window.setInterval(updateContentBox, 750);
-
-    return () => {
-      window.removeEventListener("resize", updateContentBox);
-      window.clearInterval(intervalId);
-      resizeObserver?.disconnect();
-    };
-  }, [screenShare.stream, fullscreen]);
-
-  function handlePointerClick(event) {
-    if (screenShare.screenPointerEnabled === false) {
-      onPointer(screenShare, null);
-      return;
-    }
-
-    const nextContentBox = getVideoContentBox(viewerRef.current, videoRef.current);
-    setContentBox(nextContentBox);
-
-    if (!nextContentBox || nextContentBox.width <= 0 || nextContentBox.height <= 0) {
-      onPointerOutsideVideo?.();
-      return;
-    }
-
-    const viewerRect = viewerRef.current.getBoundingClientRect();
-    const clickX = event.clientX - viewerRect.left - nextContentBox.left;
-    const clickY = event.clientY - viewerRect.top - nextContentBox.top;
-
-    if (
-      clickX < 0 ||
-      clickY < 0 ||
-      clickX > nextContentBox.width ||
-      clickY > nextContentBox.height
-    ) {
-      onPointerOutsideVideo?.();
-      return;
-    }
-
-    onPointer(screenShare, {
-      xPercent: (clickX / nextContentBox.width) * 100,
-      yPercent: (clickY / nextContentBox.height) * 100,
-    });
-  }
-
+function ScreenShareViewerBox({ screenShare, muted, fullscreen = false }) {
   return (
-    <div
-      className={
-        screenShare.screenPointerEnabled
-          ? fullscreen
-            ? "screenFullscreenViewer"
-            : "screenShareViewer"
-          : fullscreen
-            ? "screenFullscreenViewer pointerDisabled"
-            : "screenShareViewer pointerDisabled"
-      }
-      ref={viewerRef}
-      onClick={handlePointerClick}
-      title={
-        screenShare.screenPointerEnabled
-          ? "Yalnızca paylaşılan ekran görüntüsünün üzerine işaret bırakabilirsin"
-          : "Paylaşan kişi ekran işaretlemeyi kapattı"
-      }
-    >
-      <ScreenShareVideo
-        stream={screenShare.stream}
-        muted={muted}
-        videoRef={videoRef}
-        onVideoReady={updateContentBox}
-      />
-
-      {contentBox && (
-        <div
-          className="screenPointerLayer screenPointerLayerContent"
-          style={{
-            left: `${contentBox.left}px`,
-            top: `${contentBox.top}px`,
-            width: `${contentBox.width}px`,
-            height: `${contentBox.height}px`,
-          }}
-          aria-hidden="true"
-        >
-          {pointers.map((pointer) => (
-            <div
-              className={fullscreen ? "screenPointerMarker fullscreen" : "screenPointerMarker"}
-              key={pointer.id}
-              title={`${pointer.markerName || "Guest"} işaretledi`}
-              style={{
-                left: `${pointer.xPercent}%`,
-                top: `${pointer.yPercent}%`,
-              }}
-            >
-              <span className="screenPointerPin" aria-hidden="true">
-                📌
-              </span>
-              <span className="screenPointerTooltip">
-                {pointer.markerName || "Guest"}
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {!screenShare.screenPointerEnabled && (
-        <div className={fullscreen ? "screenPointerDisabledBadge fullscreen" : "screenPointerDisabledBadge"}>
-          İşaretleme paylaşan kişi tarafından kapalı
-        </div>
-      )}
+    <div className={fullscreen ? "screenFullscreenViewer" : "screenShareViewer"}>
+      <ScreenShareVideo stream={screenShare.stream} muted={muted} />
     </div>
   );
 }
@@ -364,11 +191,8 @@ function App() {
   const [localScreenStream, setLocalScreenStream] = useState(null);
   const [speakingUsers, setSpeakingUsers] = useState({});
   const [screenSharing, setScreenSharing] = useState(false);
-  const [screenPointerEnabled, setScreenPointerEnabled] = useState(true);
   const [screenShareStarting, setScreenShareStarting] = useState(false);
   const [screenShareCollapsed, setScreenShareCollapsed] = useState(false);
-  const [screenPointers, setScreenPointers] = useState([]);
-  const [screenPointerTick, setScreenPointerTick] = useState(0);
   const [fullscreenScreenShareUid, setFullscreenScreenShareUid] = useState(null);
   const [activeVoiceChannelId, setActiveVoiceChannelId] = useState(null);
   const [channelActionLoading, setChannelActionLoading] = useState(false);
@@ -445,7 +269,6 @@ function App() {
         return {
           ...participant,
           isLocalShare,
-          screenPointerEnabled: participant.screenPointerEnabled !== false,
           stream: isLocalShare ? localScreenStream : remoteScreenStream?.stream || null,
         };
       })
@@ -469,24 +292,6 @@ function App() {
     remoteScreenStreams,
   ]);
 
-  const visibleScreenPointers = useMemo(() => {
-    return screenPointers.filter((pointer) => {
-      return !pointer.expiresAtMs || pointer.expiresAtMs > screenPointerTick;
-    });
-  }, [screenPointers, screenPointerTick]);
-
-  const presenterScreenPointers = useMemo(() => {
-    if (!currentUser?.uid) {
-      return [];
-    }
-
-    return visibleScreenPointers.filter((pointer) => {
-      return (
-        pointer.screenShareUid === currentUser.uid &&
-        pointer.markerUid !== currentUser.uid
-      );
-    });
-  }, [currentUser, visibleScreenPointers]);
 
   const fullscreenScreenShare = useMemo(() => {
     if (!fullscreenScreenShareUid) {
@@ -1360,74 +1165,6 @@ function App() {
     pendingIceCandidatesRef.current.delete(uid);
   }
 
-  function getScreenPointersForShare(screenShareUid) {
-    return visibleScreenPointers.filter((pointer) => {
-      return pointer.screenShareUid === screenShareUid;
-    });
-  }
-
-  async function addScreenPointer(screenShare, point) {
-    if (!voiceJoined || !currentUser || !screenShare?.uid) {
-      return;
-    }
-
-    if (screenShare.screenPointerEnabled === false) {
-      setVoiceError(
-        `${screenShare.displayName || "Paylaşan kişi"} ekran işaretlemeyi kapattı.`
-      );
-      return;
-    }
-
-    if (!point) {
-      return;
-    }
-
-    const roomId = voiceRoomIdRef.current;
-
-    if (!roomId) {
-      return;
-    }
-
-    const safeXPercent = Math.min(100, Math.max(0, point.xPercent));
-    const safeYPercent = Math.min(100, Math.max(0, point.yPercent));
-    const pointerLifetimeMs = 8500;
-    const pointerCreatedAtMs = new Date().getTime();
-
-    try {
-      const pointerRef = await addDoc(
-        collection(db, "voiceRooms", roomId, "screenPointers"),
-        {
-          roomId,
-          serverId: activeServerId,
-          channelId: activeVoiceChannelId,
-          screenShareUid: screenShare.uid,
-          screenShareName: screenShare.displayName || "Guest",
-          markerUid: currentUser.uid,
-          markerName: username.trim() || "Guest",
-          xPercent: safeXPercent,
-          yPercent: safeYPercent,
-          createdAt: serverTimestamp(),
-          createdAtMs: pointerCreatedAtMs,
-          expiresAtMs: pointerCreatedAtMs + pointerLifetimeMs,
-        }
-      );
-
-      setVoiceError("");
-
-      window.setTimeout(() => {
-        deleteDoc(pointerRef).catch((error) => {
-          console.warn("Ekran işareti temizlenemedi:", error);
-        });
-      }, pointerLifetimeMs + 700);
-    } catch (error) {
-      console.error("Ekran işareti gönderilemedi:", error);
-      setVoiceError("Ekran üzerinde işaret gönderilemedi.");
-    }
-  }
-
-  function showPointerOutsideVideoWarning() {
-    setVoiceError("İşaret sadece paylaşılan ekran görüntüsünün üzerine bırakılabilir.");
-  }
 
   function openScreenShareFullscreen(screenShareUid) {
     setFullscreenScreenShareUid(screenShareUid);
@@ -1436,33 +1173,6 @@ function App() {
 
   function closeScreenShareFullscreen() {
     setFullscreenScreenShareUid(null);
-  }
-
-  async function toggleScreenPointerEnabled() {
-    if (!screenSharing || !participantDocRef.current) {
-      return;
-    }
-
-    const nextPointerEnabled = !screenPointerEnabled;
-    setScreenPointerEnabled(nextPointerEnabled);
-    setVoiceError("");
-
-    try {
-      await updateDoc(participantDocRef.current, {
-        screenPointerEnabled: nextPointerEnabled,
-        updatedAt: serverTimestamp(),
-      });
-
-      setVoiceStatus(
-        nextPointerEnabled
-          ? "Ekran işaretleme açıldı. İzleyenler ekranda nokta işaretleyebilir."
-          : "Ekran işaretleme kapatıldı. İzleyenler artık ekranda işaret bırakamaz."
-      );
-    } catch (error) {
-      console.error("Ekran işaretleme ayarı değiştirilemedi:", error);
-      setScreenPointerEnabled(!nextPointerEnabled);
-      setVoiceError("Ekran işaretleme ayarı değiştirilemedi.");
-    }
   }
 
   function removeRemoteScreenStream(uid) {
@@ -1871,12 +1581,10 @@ function App() {
       screenStreamRef.current = nextScreenStream;
       setLocalScreenStream(nextScreenStream);
       setScreenSharing(true);
-      setScreenPointerEnabled(true);
       setScreenShareCollapsed(false);
 
       await updateDoc(participantDocRef.current, {
         screenSharing: true,
-        screenPointerEnabled: true,
         screenShareStartedAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
@@ -1900,12 +1608,10 @@ function App() {
       screenStreamRef.current = null;
       setLocalScreenStream(null);
       setScreenSharing(false);
-      setScreenPointerEnabled(true);
 
       if (participantDocRef.current) {
         updateDoc(participantDocRef.current, {
           screenSharing: false,
-          screenPointerEnabled: false,
           updatedAt: serverTimestamp(),
         }).catch((updateError) => {
           console.warn("Ekran paylaşımı durumu sıfırlanamadı:", updateError);
@@ -1944,7 +1650,6 @@ function App() {
 
       setLocalScreenStream(null);
       setScreenSharing(false);
-      setScreenPointerEnabled(true);
       setScreenShareStarting(false);
       setScreenShareCollapsed(false);
 
@@ -1962,8 +1667,7 @@ function App() {
         try {
           await updateDoc(participantDocRef.current, {
             screenSharing: false,
-            screenPointerEnabled: false,
-            updatedAt: serverTimestamp(),
+              updatedAt: serverTimestamp(),
           });
         } catch (error) {
           console.warn("Ekran paylaşımı durumu güncellenemedi:", error);
@@ -2016,10 +1720,8 @@ function App() {
       setRemoteScreenStreams([]);
       setLocalScreenStream(null);
       setScreenSharing(false);
-      setScreenPointerEnabled(true);
       setScreenShareStarting(false);
       setScreenShareCollapsed(false);
-      setScreenPointers([]);
       setFullscreenScreenShareUid(null);
       setSpeakingUsers({});
       setVoiceStatus("Sese katılmadın.");
@@ -2117,7 +1819,6 @@ function App() {
           displayName: username.trim() || "Guest",
           muted: voiceMutedRef.current,
           screenSharing: false,
-          screenPointerEnabled: false,
           joinedAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
         },
@@ -2578,63 +2279,8 @@ function App() {
     };
   }, []);
 
-  useEffect(() => {
-    if (!voiceJoined || !activeServerId || !activeVoiceChannelId) {
-      setScreenPointers([]);
-      return;
-    }
 
-    const roomId = getVoiceRoomId(activeServerId, activeVoiceChannelId);
-    const pointersRef = collection(db, "voiceRooms", roomId, "screenPointers");
 
-    const unsubscribe = onSnapshot(
-      pointersRef,
-      (snapshot) => {
-        const now = Date.now();
-        const nextPointers = snapshot.docs
-          .map((pointerDoc) => {
-            return {
-              id: pointerDoc.id,
-              ...pointerDoc.data(),
-            };
-          })
-          .filter((pointer) => {
-            return !pointer.expiresAtMs || pointer.expiresAtMs > now - 800;
-          });
-
-        setScreenPointers(nextPointers);
-      },
-      (error) => {
-        console.error("Ekran işaretleri okunamadı:", error);
-        setVoiceError(`Ekran işaretleri okunamadı: ${error.message}`);
-      }
-    );
-
-    return () => {
-      unsubscribe();
-      setScreenPointers([]);
-    };
-  }, [voiceJoined, activeServerId, activeVoiceChannelId]);
-
-  useEffect(() => {
-    if (screenPointers.length === 0) {
-      return;
-    }
-
-    const intervalId = window.setInterval(() => {
-      setScreenPointerTick(Date.now());
-    }, 750);
-
-    return () => window.clearInterval(intervalId);
-  }, [screenPointers.length]);
-
-  useEffect(() => {
-    if (!screenSharing || presenterScreenPointers.length === 0) {
-      return;
-    }
-
-    setScreenShareCollapsed(false);
-  }, [screenSharing, presenterScreenPointers.length]);
 
   useEffect(() => {
     if (!fullscreenScreenShareUid) {
@@ -2909,16 +2555,12 @@ function App() {
                         const isCurrentUser = participant.uid === currentUser.uid;
                         const isSpeaking =
                           speakingUsers[participant.uid] && !participant.muted;
-                        const pointerStatus =
-                          participant.screenPointerEnabled === false
-                            ? "işaretleme kapalı"
-                            : "işaretleme açık";
                         const participantStatus = participant.screenSharing
                           ? participant.muted
-                            ? `Ekran paylaşıyor · ${pointerStatus} · mikrofon kapalı`
+                            ? "Ekran paylaşıyor · mikrofon kapalı"
                             : isSpeaking
-                              ? `Ekran paylaşıyor · ${pointerStatus} · konuşuyor`
-                              : `Ekran paylaşıyor · ${pointerStatus}`
+                              ? "Ekran paylaşıyor · konuşuyor"
+                              : "Ekran paylaşıyor"
                           : participant.muted
                             ? "Mikrofon kapalı"
                             : isSpeaking
@@ -3011,22 +2653,6 @@ function App() {
                                 : "Ekranı Paylaş"}
                           </button>
 
-                          {screenSharing && (
-                            <button
-                              className={
-                                screenPointerEnabled
-                                  ? "screenPointerToggleButton active"
-                                  : "screenPointerToggleButton"
-                              }
-                              onClick={toggleScreenPointerEnabled}
-                              title="İzleyenlerin ekranda işaret bırakmasını aç/kapat"
-                            >
-                              {screenPointerEnabled
-                                ? "İşaretlemeyi Kapat"
-                                : "İşaretlemeyi Aç"}
-                            </button>
-                          )}
-
                           <button
                             className="voiceLeaveButton"
                             onClick={() => leaveVoiceRoom()}
@@ -3113,20 +2739,6 @@ function App() {
 
                 {screenSharing && (
                   <button
-                    className={
-                      screenPointerEnabled
-                        ? "screenPointerControlButton active"
-                        : "screenPointerControlButton"
-                    }
-                    onClick={toggleScreenPointerEnabled}
-                    title="İzleyenlerin ekranda işaret bırakmasını aç/kapat"
-                  >
-                    {screenPointerEnabled ? "İşaretleme Açık" : "İşaretleme Kapalı"}
-                  </button>
-                )}
-
-                {screenSharing && (
-                  <button
                     className="screenShareStopButton"
                     onClick={() => stopScreenShare()}
                   >
@@ -3165,10 +2777,7 @@ function App() {
                     {screenShare.stream ? (
                       <ScreenShareViewerBox
                         screenShare={screenShare}
-                        pointers={getScreenPointersForShare(screenShare.uid)}
                         muted={screenShare.isLocalShare}
-                        onPointer={addScreenPointer}
-                        onPointerOutsideVideo={showPointerOutsideVideoWarning}
                       />
                     ) : (
                       <div className="screenShareLoading">
@@ -3298,30 +2907,15 @@ function App() {
             </div>
 
             <div className="screenFullscreenActions">
-              <span className="screenPointerHelp">
-                {fullscreenScreenShare.screenPointerEnabled
-                  ? "Ekranda işaretlemek istediğin noktaya tıkla."
-                  : "Paylaşan kişi ekran işaretlemeyi kapattı."}
-              </span>
               <button onClick={closeScreenShareFullscreen}>Kapat</button>
             </div>
           </div>
 
           <ScreenShareViewerBox
             screenShare={fullscreenScreenShare}
-            pointers={getScreenPointersForShare(fullscreenScreenShare.uid)}
             muted={fullscreenScreenShare.isLocalShare}
             fullscreen
-            onPointer={addScreenPointer}
-            onPointerOutsideVideo={showPointerOutsideVideoWarning}
           />
-        </div>
-      )}
-
-      {screenSharing && presenterScreenPointers.length > 0 && (
-        <div className="presenterPointerToast">
-          <strong>{presenterScreenPointers.at(-1)?.markerName || "Guest"}</strong>
-          <span>ekranında bir noktayı işaretledi. İşaret, ekran paylaşımı önizlemesinde görünüyor.</span>
         </div>
       )}
 

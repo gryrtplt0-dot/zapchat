@@ -397,19 +397,6 @@ input {
   background: rgba(255, 107, 107, 0.24);
 }
 
-.screenPointerControlButton {
-  background: rgba(69, 219, 137, 0.14);
-  color: #9df0c6;
-}
-
-.screenPointerControlButton:hover {
-  background: rgba(69, 219, 137, 0.22);
-}
-
-.screenPointerControlButton:not(.active) {
-  background: rgba(255, 176, 32, 0.12);
-  color: #ffcf7a;
-}
 
 .screenShareCollapsedInfo {
   color: #aeb5c2;
@@ -488,19 +475,9 @@ input {
 .screenShareViewer {
   position: relative;
   background: #050609;
-  cursor: crosshair;
   overflow: hidden;
 }
 
-.screenShareViewer.pointerDisabled,
-.screenFullscreenViewer.pointerDisabled {
-  cursor: not-allowed;
-}
-
-.screenShareViewer.pointerDisabled .screenShareVideo,
-.screenFullscreenViewer.pointerDisabled .screenShareVideo {
-  opacity: 0.82;
-}
 
 .screenShareVideo {
   display: block;
@@ -511,122 +488,6 @@ input {
   background: #050609;
 }
 
-.screenPointerDisabledBadge {
-  position: absolute;
-  left: 50%;
-  bottom: 14px;
-  transform: translateX(-50%);
-  z-index: 5;
-  max-width: calc(100% - 28px);
-  color: #ffcf7a;
-  background: rgba(17, 19, 24, 0.88);
-  border: 1px solid rgba(255, 176, 32, 0.34);
-  border-radius: 999px;
-  padding: 8px 11px;
-  font-size: 12px;
-  font-weight: 900;
-  text-align: center;
-  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.38);
-  pointer-events: none;
-}
-
-.screenPointerDisabledBadge.fullscreen {
-  bottom: 24px;
-  font-size: 14px;
-  padding: 10px 14px;
-}
-
-.screenPointerLayer {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  overflow: hidden;
-}
-
-.screenPointerLayerContent {
-  inset: auto;
-}
-
-.screenPointerMarker {
-  position: absolute;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transform: translate(-50%, -92%);
-  z-index: 4;
-  pointer-events: auto;
-  cursor: help;
-}
-
-.screenPointerPin {
-  display: grid;
-  place-items: center;
-  width: 34px;
-  height: 34px;
-  color: #ffcf7a;
-  font-size: 25px;
-  line-height: 1;
-  text-shadow:
-    0 2px 0 rgba(17, 19, 24, 0.92),
-    0 0 14px rgba(255, 176, 32, 0.72);
-  filter: drop-shadow(0 0 10px rgba(255, 176, 32, 0.52));
-  transform-origin: 50% 86%;
-  animation: screenPointerPinPulse 1.15s ease-in-out infinite;
-}
-
-.screenPointerTooltip {
-  position: absolute;
-  left: 50%;
-  bottom: calc(100% + 8px);
-  max-width: 190px;
-  color: #111318;
-  background: #ffcf7a;
-  border: 1px solid rgba(255, 255, 255, 0.62);
-  padding: 5px 8px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 900;
-  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.38);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  opacity: 0;
-  visibility: hidden;
-  pointer-events: none;
-  transform: translateX(-50%) translateY(4px);
-  transition:
-    opacity 0.14s ease,
-    visibility 0.14s ease,
-    transform 0.14s ease;
-}
-
-.screenPointerMarker:hover .screenPointerTooltip {
-  opacity: 1;
-  visibility: visible;
-  transform: translateX(-50%) translateY(0);
-}
-
-.screenPointerMarker.fullscreen .screenPointerPin {
-  width: 42px;
-  height: 42px;
-  font-size: 32px;
-}
-
-.screenPointerMarker.fullscreen .screenPointerTooltip {
-  font-size: 14px;
-  padding: 7px 10px;
-}
-
-@keyframes screenPointerPinPulse {
-  0%,
-  100% {
-    transform: rotate(-18deg) scale(1);
-  }
-
-  50% {
-    transform: rotate(-18deg) scale(1.08);
-  }
-}
 
 .screenFullscreenOverlay {
   position: fixed;
@@ -673,17 +534,6 @@ input {
   justify-content: flex-end;
 }
 
-.screenFullscreenActions .screenPointerHelp {
-  margin: 0;
-  color: #ffcf7a;
-  background: rgba(255, 176, 32, 0.12);
-  border: 1px solid rgba(255, 176, 32, 0.28);
-  padding: 8px 10px;
-  border-radius: 999px;
-  font-size: 12px;
-  text-transform: none;
-  letter-spacing: 0;
-}
 
 .screenFullscreenActions button {
   border: none;
@@ -706,7 +556,6 @@ input {
   display: grid;
   place-items: center;
   background: #050609;
-  cursor: crosshair;
   overflow: hidden;
 }
 
@@ -1440,23 +1289,6 @@ input {
   background: rgba(255, 107, 107, 0.24);
 }
 
-.screenPointerToggleButton {
-  background: rgba(255, 176, 32, 0.12);
-  color: #ffcf7a;
-}
-
-.screenPointerToggleButton:hover {
-  background: rgba(255, 176, 32, 0.2);
-}
-
-.screenPointerToggleButton.active {
-  background: rgba(69, 219, 137, 0.14);
-  color: #9df0c6;
-}
-
-.screenPointerToggleButton.active:hover {
-  background: rgba(69, 219, 137, 0.22);
-}
 
 .voiceLeaveButton {
   grid-column: 1 / -1;
@@ -1586,36 +1418,6 @@ input {
   flex-shrink: 0;
 }
 
-.presenterPointerToast {
-  position: fixed;
-  left: 50%;
-  bottom: 24px;
-  transform: translateX(-50%);
-  z-index: 140;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  max-width: min(520px, calc(100vw - 32px));
-  color: #ffcf7a;
-  background: rgba(17, 19, 24, 0.94);
-  border: 1px solid rgba(255, 176, 32, 0.36);
-  border-radius: 999px;
-  padding: 10px 14px;
-  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.48);
-  pointer-events: none;
-}
-
-.presenterPointerToast strong {
-  color: #ffffff;
-}
-
-.presenterPointerToast span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 13px;
-  font-weight: 800;
-}
 
 .remoteAudioMount {
   display: none;
@@ -1689,8 +1491,7 @@ input {
     width: 100%;
   }
 
-  .screenFullscreenActions button,
-  .screenFullscreenActions .screenPointerHelp {
+  .screenFullscreenActions button {
     width: 100%;
     text-align: center;
   }
