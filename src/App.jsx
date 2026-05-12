@@ -119,6 +119,26 @@ function RemoteAudio({ stream }) {
   return <audio ref={audioRef} autoPlay playsInline />;
 }
 
+function ScreenShareVideo({ stream, muted = false }) {
+  const videoRef = useRef(null);
+
+  useEffect(() => {
+    if (videoRef.current && stream) {
+      videoRef.current.srcObject = stream;
+    }
+  }, [stream]);
+
+  return (
+    <video
+      className="screenShareVideo"
+      ref={videoRef}
+      autoPlay
+      playsInline
+      muted={muted}
+    />
+  );
+}
+
 function App() {
   const [username, setUsername] = useState(() => {
     return localStorage.getItem("zapchat-username") || "Guest";
@@ -155,7 +175,11 @@ function App() {
   const [voiceStatus, setVoiceStatus] = useState("Sese katılmadın.");
   const [voiceError, setVoiceError] = useState("");
   const [remoteStreams, setRemoteStreams] = useState([]);
+  const [remoteScreenStreams, setRemoteScreenStreams] = useState([]);
+  const [localScreenStream, setLocalScreenStream] = useState(null);
   const [speakingUsers, setSpeakingUsers] = useState({});
+  const [screenSharing, setScreenSharing] = useState(false);
+  const [screenShareStarting, setScreenShareStarting] = useState(false);
   const [activeVoiceChannelId, setActiveVoiceChannelId] = useState(null);
   const [channelActionLoading, setChannelActionLoading] = useState(false);
 
@@ -169,6 +193,9 @@ function App() {
   const voiceChannelIdRef = useRef(null);
   const voiceJoinedRef = useRef(false);
   const voiceMutedRef = useRef(false);
+  const screenStreamRef = useRef(null);
+  const screenSenderMapRef = useRef(new Map());
+  const screenShareStopInProgressRef = useRef(false);
   const audioMonitorsRef = useRef(new Map());
 
   const activeServer =
@@ -208,6 +235,48 @@ function App() {
       );
     });
   }, [voiceParticipants, activeServerId, activeVoiceChannelId]);
+
+  const activeScreenShares = useMemo(() => {
+    if (!activeServerId || !activeVoiceChannelId) {
+      return [];
+    }
+
+    const screenSharingParticipants = currentVoiceParticipants.filter(
+      (participant) => participant.screenSharing
+    );
+
+    return screenSharingParticipants
+      .map((participant) => {
+        const isLocalShare = participant.uid === currentUser?.uid;
+        const remoteScreenStream = remoteScreenStreams.find((screenStream) => {
+          return screenStream.uid === participant.uid;
+        });
+
+        return {
+          ...participant,
+          isLocalShare,
+          stream: isLocalShare ? localScreenStream : remoteScreenStream?.stream || null,
+        };
+      })
+      .sort((a, b) => {
+        if (a.isLocalShare && !b.isLocalShare) {
+          return -1;
+        }
+
+        if (!a.isLocalShare && b.isLocalShare) {
+          return 1;
+        }
+
+        return (a.displayName || "").localeCompare(b.displayName || "");
+      });
+  }, [
+    activeServerId,
+    activeVoiceChannelId,
+    currentUser?.uid,
+    currentVoiceParticipants,
+    localScreenStream,
+    remoteScreenStreams,
+  ]);
 
   function getVoiceParticipantsForChannel(channelId) {
     return voiceParticipants.filter((participant) => {
@@ -1061,12 +1130,106 @@ function App() {
     pendingIceCandidatesRef.current.delete(uid);
   }
 
+  function removeRemoteScreenStream(uid) {
+    setRemoteScreenStreams((previousStreams) => {
+      return previousStreams.filter((screenStream) => screenStream.uid !== uid);
+    });
+  }
+
   function removeRemoteStream(uid) {
     stopAudioLevelMonitor(uid);
 
     setRemoteStreams((previousStreams) =>
       previousStreams.filter((remoteStream) => remoteStream.uid !== uid)
     );
+    removeRemoteScreenStream(uid);
+  }
+
+  function addScreenTracksToPeerConnection(remoteUid, peerConnection) {
+    if (!screenStreamRef.current || !peerConnection) {
+      return [];
+    }
+
+    const liveScreenTracks = screenStreamRef.current.getVideoTracks().filter((track) => {
+      return track.readyState === "live";
+    });
+
+    if (liveScreenTracks.length === 0) {
+      return [];
+    }
+
+    const existingVideoSenders = peerConnection.getSenders().filter((sender) => {
+      return sender.track?.kind === "video";
+    });
+
+    if (existingVideoSenders.length > 0) {
+      screenSenderMapRef.current.set(remoteUid, existingVideoSenders);
+      return existingVideoSenders;
+    }
+
+    const screenSenders = liveScreenTracks.map((track) => {
+      return peerConnection.addTrack(track, screenStreamRef.current);
+    });
+
+    screenSenderMapRef.current.set(remoteUid, screenSenders);
+    return screenSenders;
+  }
+
+  function removeScreenTracksFromPeerConnection(remoteUid, peerConnection) {
+    if (!peerConnection) {
+      return;
+    }
+
+    const storedScreenSenders = screenSenderMapRef.current.get(remoteUid) || [];
+    const videoSenders = peerConnection.getSenders().filter((sender) => {
+      return sender.track?.kind === "video";
+    });
+    const sendersToRemove = Array.from(
+      new Set([...storedScreenSenders, ...videoSenders])
+    );
+
+    sendersToRemove.forEach((sender) => {
+      try {
+        peerConnection.removeTrack(sender);
+      } catch (error) {
+        console.warn("Ekran paylaşımı track'i kaldırılamadı:", error);
+      }
+    });
+
+    screenSenderMapRef.current.delete(remoteUid);
+  }
+
+  async function renegotiatePeerConnection(remoteUid, peerConnection) {
+    if (!currentUser || !voiceRoomIdRef.current || !peerConnection) {
+      return;
+    }
+
+    if (peerConnection.signalingState === "closed") {
+      return;
+    }
+
+    if (peerConnection.signalingState !== "stable") {
+      window.setTimeout(() => {
+        const currentPeerConnection = peerConnectionsRef.current.get(remoteUid);
+
+        if (!currentPeerConnection || currentPeerConnection.signalingState !== "stable") {
+          return;
+        }
+
+        renegotiatePeerConnection(remoteUid, currentPeerConnection).catch((error) => {
+          console.warn("Yeniden WebRTC teklifi gönderilemedi:", error);
+        });
+      }, 450);
+      return;
+    }
+
+    const offer = await peerConnection.createOffer();
+    await peerConnection.setLocalDescription(offer);
+
+    await sendVoiceSignal(remoteUid, "offer", {
+      type: peerConnection.localDescription.type,
+      sdp: peerConnection.localDescription.sdp,
+    });
   }
 
   function closePeerConnection(uid) {
@@ -1081,6 +1244,7 @@ function App() {
 
     peerConnectionsRef.current.delete(uid);
     pendingIceCandidatesRef.current.delete(uid);
+    screenSenderMapRef.current.delete(uid);
     removeRemoteStream(uid);
   }
 
@@ -1105,6 +1269,8 @@ function App() {
       peerConnection.addTrack(track, localStreamRef.current);
     });
 
+    addScreenTracksToPeerConnection(remoteUid, peerConnection);
+
     peerConnection.onicecandidate = (event) => {
       if (event.candidate) {
         sendVoiceSignal(remoteUid, "candidate", event.candidate.toJSON()).catch(
@@ -1116,9 +1282,22 @@ function App() {
     };
 
     peerConnection.ontrack = (event) => {
-      const [stream] = event.streams;
+      const [eventStream] = event.streams;
+      const stream = eventStream || new MediaStream([event.track]);
 
-      if (!stream) {
+      if (event.track.kind === "video") {
+        setRemoteScreenStreams((previousStreams) => {
+          const withoutOldStream = previousStreams.filter((screenStream) => {
+            return screenStream.uid !== remoteUid;
+          });
+
+          return [...withoutOldStream, { uid: remoteUid, stream }];
+        });
+
+        event.track.onended = () => {
+          removeRemoteScreenStream(remoteUid);
+        };
+
         return;
       }
 
@@ -1226,6 +1405,28 @@ function App() {
                   type: peerConnection.localDescription.type,
                   sdp: peerConnection.localDescription.sdp,
                 });
+
+                const offerAlreadyRequestedVideo = Boolean(
+                  signal.payload?.sdp?.includes("m=video")
+                );
+
+                if (screenStreamRef.current && !offerAlreadyRequestedVideo) {
+                  window.setTimeout(() => {
+                    const currentPeerConnection = peerConnectionsRef.current.get(
+                      signal.fromUid
+                    );
+
+                    if (!currentPeerConnection) {
+                      return;
+                    }
+
+                    renegotiatePeerConnection(signal.fromUid, currentPeerConnection).catch(
+                      (error) => {
+                        console.warn("Ekran paylaşımı teklifi gönderilemedi:", error);
+                      }
+                    );
+                  }, 350);
+                }
               }
 
               if (signal.type === "answer") {
@@ -1279,10 +1480,169 @@ function App() {
     }
   }
 
+  async function startScreenShare() {
+    if (!voiceJoined || !currentUser || !participantDocRef.current) {
+      alert("Ekran paylaşmak için önce bir ses kanalına katılmalısın.");
+      return;
+    }
+
+    if (screenSharing || screenShareStarting) {
+      return;
+    }
+
+    if (!navigator.mediaDevices?.getDisplayMedia) {
+      setVoiceError("Bu tarayıcı ekran paylaşımını desteklemiyor.");
+      return;
+    }
+
+    const otherScreenShare = currentVoiceParticipants.find((participant) => {
+      return participant.uid !== currentUser.uid && participant.screenSharing;
+    });
+
+    if (otherScreenShare) {
+      alert(
+        `${otherScreenShare.displayName || "Başka bir kullanıcı"} zaten bu kanalda ekran paylaşıyor.`
+      );
+      return;
+    }
+
+    let nextScreenStream = null;
+
+    try {
+      setScreenShareStarting(true);
+      setVoiceError("");
+      setVoiceStatus("Ekran seçimi bekleniyor...");
+
+      nextScreenStream = await navigator.mediaDevices.getDisplayMedia({
+        video: {
+          cursor: "always",
+          displaySurface: "monitor",
+        },
+        audio: false,
+      });
+
+      const [videoTrack] = nextScreenStream.getVideoTracks();
+
+      if (!videoTrack) {
+        throw new Error("Ekran video track'i alınamadı.");
+      }
+
+      videoTrack.onended = () => {
+        stopScreenShare().catch((error) => {
+          console.warn("Ekran paylaşımı otomatik durdurulamadı:", error);
+        });
+      };
+
+      screenStreamRef.current = nextScreenStream;
+      setLocalScreenStream(nextScreenStream);
+      setScreenSharing(true);
+
+      await updateDoc(participantDocRef.current, {
+        screenSharing: true,
+        screenShareStartedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+
+      const renegotiationJobs = [];
+
+      peerConnectionsRef.current.forEach((peerConnection, uid) => {
+        addScreenTracksToPeerConnection(uid, peerConnection);
+        renegotiationJobs.push(renegotiatePeerConnection(uid, peerConnection));
+      });
+
+      await Promise.allSettled(renegotiationJobs);
+      setVoiceStatus("Ekran paylaşımı başladı.");
+    } catch (error) {
+      console.error("Ekran paylaşımı başlatılamadı:", error);
+
+      if (nextScreenStream) {
+        nextScreenStream.getTracks().forEach((track) => track.stop());
+      }
+
+      screenStreamRef.current = null;
+      setLocalScreenStream(null);
+      setScreenSharing(false);
+
+      if (participantDocRef.current) {
+        updateDoc(participantDocRef.current, {
+          screenSharing: false,
+          updatedAt: serverTimestamp(),
+        }).catch((updateError) => {
+          console.warn("Ekran paylaşımı durumu sıfırlanamadı:", updateError);
+        });
+      }
+
+      if (error.name === "NotAllowedError") {
+        setVoiceError("Ekran paylaşımı izni verilmedi veya seçim iptal edildi.");
+      } else {
+        setVoiceError("Ekran paylaşımı başlatılamadı.");
+      }
+    } finally {
+      setScreenShareStarting(false);
+    }
+  }
+
+  async function stopScreenShare(updateParticipant = true, renegotiatePeers = true) {
+    if (screenShareStopInProgressRef.current) {
+      return;
+    }
+
+    screenShareStopInProgressRef.current = true;
+
+    try {
+      const hadScreenShare = Boolean(screenStreamRef.current || screenSharing);
+      const currentScreenStream = screenStreamRef.current;
+
+      screenStreamRef.current = null;
+
+      if (currentScreenStream) {
+        currentScreenStream.getTracks().forEach((track) => {
+          track.onended = null;
+          track.stop();
+        });
+      }
+
+      setLocalScreenStream(null);
+      setScreenSharing(false);
+      setScreenShareStarting(false);
+
+      const renegotiationJobs = [];
+
+      peerConnectionsRef.current.forEach((peerConnection, uid) => {
+        removeScreenTracksFromPeerConnection(uid, peerConnection);
+
+        if (renegotiatePeers) {
+          renegotiationJobs.push(renegotiatePeerConnection(uid, peerConnection));
+        }
+      });
+
+      if (updateParticipant && participantDocRef.current) {
+        try {
+          await updateDoc(participantDocRef.current, {
+            screenSharing: false,
+            updatedAt: serverTimestamp(),
+          });
+        } catch (error) {
+          console.warn("Ekran paylaşımı durumu güncellenemedi:", error);
+        }
+      }
+
+      await Promise.allSettled(renegotiationJobs);
+
+      if (hadScreenShare) {
+        setVoiceStatus("Ekran paylaşımı durdu.");
+      }
+    } finally {
+      screenShareStopInProgressRef.current = false;
+    }
+  }
+
   async function leaveVoiceRoom(updateState = true) {
     const participantRef = participantDocRef.current;
 
     voiceJoinedRef.current = false;
+
+    await stopScreenShare(false, false);
 
     if (signalUnsubscribeRef.current) {
       signalUnsubscribeRef.current();
@@ -1295,6 +1655,7 @@ function App() {
 
     peerConnectionsRef.current.clear();
     pendingIceCandidatesRef.current.clear();
+    screenSenderMapRef.current.clear();
     Array.from(audioMonitorsRef.current.keys()).forEach((uid) => {
       stopAudioLevelMonitor(uid);
     });
@@ -1309,6 +1670,10 @@ function App() {
       setVoiceJoining(false);
       setActiveVoiceChannelId(null);
       setRemoteStreams([]);
+      setRemoteScreenStreams([]);
+      setLocalScreenStream(null);
+      setScreenSharing(false);
+      setScreenShareStarting(false);
       setSpeakingUsers({});
       setVoiceStatus("Sese katılmadın.");
     }
@@ -1404,6 +1769,7 @@ function App() {
           email: currentUser.email,
           displayName: username.trim() || "Guest",
           muted: voiceMutedRef.current,
+          screenSharing: false,
           joinedAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
         },
@@ -2123,11 +2489,17 @@ function App() {
                         const isCurrentUser = participant.uid === currentUser.uid;
                         const isSpeaking =
                           speakingUsers[participant.uid] && !participant.muted;
-                        const participantStatus = participant.muted
-                          ? "Mikrofon kapalı"
-                          : isSpeaking
-                            ? "Konuşuyor"
-                            : "Sessiz";
+                        const participantStatus = participant.screenSharing
+                          ? participant.muted
+                            ? "Ekran paylaşıyor · mikrofon kapalı"
+                            : isSpeaking
+                              ? "Ekran paylaşıyor · konuşuyor"
+                              : "Ekran paylaşıyor"
+                          : participant.muted
+                            ? "Mikrofon kapalı"
+                            : isSpeaking
+                              ? "Konuşuyor"
+                              : "Sessiz";
 
                         return (
                           <div
@@ -2157,7 +2529,13 @@ function App() {
                             </div>
 
                             <span className="voiceParticipantIcon">
-                              {participant.muted ? "🔇" : isSpeaking ? "🟢" : "🎙️"}
+                              {participant.screenSharing
+                                ? "🖥️"
+                                : participant.muted
+                                  ? "🔇"
+                                  : isSpeaking
+                                    ? "🟢"
+                                    : "🎙️"}
                             </span>
                           </div>
                         );
@@ -2184,6 +2562,29 @@ function App() {
                             onClick={toggleVoiceMute}
                           >
                             {voiceMuted ? "Mikrofonu Aç" : "Mikrofonu Kapat"}
+                          </button>
+
+                          <button
+                            className={
+                              screenSharing
+                                ? "screenShareButton active"
+                                : "screenShareButton"
+                            }
+                            onClick={() => {
+                              if (screenSharing) {
+                                stopScreenShare();
+                                return;
+                              }
+
+                              startScreenShare();
+                            }}
+                            disabled={screenShareStarting}
+                          >
+                            {screenShareStarting
+                              ? "Başlatılıyor..."
+                              : screenSharing
+                                ? "Paylaşımı Durdur"
+                                : "Ekranı Paylaş"}
                           </button>
 
                           <button
@@ -2243,6 +2644,56 @@ function App() {
             {activeServer ? "Firebase Online" : "Hazır"}
           </div>
         </header>
+
+        {activeServer && voiceJoined && activeScreenShares.length > 0 && (
+          <section className="screenSharePanel">
+            <div className="screenSharePanelHeader">
+              <div>
+                <span>Ekran Paylaşımı</span>
+                <strong>
+                  {activeScreenShares.length === 1
+                    ? `${activeScreenShares[0].displayName || "Guest"} ekran paylaşıyor`
+                    : `${activeScreenShares.length} ekran paylaşımı var`}
+                </strong>
+              </div>
+
+              {screenSharing && (
+                <button onClick={() => stopScreenShare()}>Paylaşımı Durdur</button>
+              )}
+            </div>
+
+            <div className="screenShareGrid">
+              {activeScreenShares.map((screenShare) => (
+                <div className="screenShareCard" key={screenShare.uid}>
+                  <div className="screenShareCardTop">
+                    <strong>
+                      {screenShare.displayName || "Guest"}
+                      {screenShare.isLocalShare ? " (sen)" : ""}
+                    </strong>
+                    <span>Canlı</span>
+                  </div>
+
+                  {screenShare.stream ? (
+                    <ScreenShareVideo
+                      stream={screenShare.stream}
+                      muted={screenShare.isLocalShare}
+                    />
+                  ) : (
+                    <div className="screenShareLoading">
+                      Ekran bağlantısı bekleniyor...
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {activeServer && !voiceJoined && activeScreenShares.length > 0 && (
+          <section className="screenShareHint">
+            Bir ekran paylaşımı var. İzlemek için ilgili ses kanalına katılmalısın.
+          </section>
+        )}
 
         {activeServer ? (
           <>
