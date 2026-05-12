@@ -207,6 +207,7 @@ function App() {
   const [voiceJoined, setVoiceJoined] = useState(false);
   const [voiceJoining, setVoiceJoining] = useState(false);
   const [voiceMuted, setVoiceMuted] = useState(false);
+  const [voiceServerMuted, setVoiceServerMuted] = useState(false);
   const [voiceParticipants, setVoiceParticipants] = useState([]);
   const [voiceStatus, setVoiceStatus] = useState("Sese katılmadın.");
   const [voiceError, setVoiceError] = useState("");
@@ -220,6 +221,7 @@ function App() {
   const [fullscreenScreenShareUid, setFullscreenScreenShareUid] = useState(null);
   const [activeVoiceChannelId, setActiveVoiceChannelId] = useState(null);
   const [channelActionLoading, setChannelActionLoading] = useState(false);
+  const [moderationActionLoading, setModerationActionLoading] = useState(false);
 
   const messagesEndRef = useRef(null);
   const localStreamRef = useRef(null);
@@ -231,6 +233,8 @@ function App() {
   const voiceChannelIdRef = useRef(null);
   const voiceJoinedRef = useRef(false);
   const voiceMutedRef = useRef(false);
+  const voiceServerMutedRef = useRef(false);
+  const voiceLeaveInProgressRef = useRef(false);
   const screenStreamRef = useRef(null);
   const screenSenderMapRef = useRef(new Map());
   const screenShareStopInProgressRef = useRef(false);
@@ -319,6 +323,7 @@ function App() {
 
   const displayedMembers = useMemo(() => {
     return members
+      .filter((member) => member.removed !== true)
       .map((member) => {
         const lastSeenAt = Math.max(
           getTimestampMillis(member.lastSeen),
@@ -354,6 +359,7 @@ function App() {
   const onlineMemberCount = displayedMembers.filter((member) => {
     return member.isOnline;
   }).length;
+  const activeMemberCount = displayedMembers.length;
 
   const fullscreenScreenShare = useMemo(() => {
     if (!fullscreenScreenShareUid) {
@@ -396,6 +402,26 @@ function App() {
 
   function getUserInitial(displayName) {
     return (displayName || "G").charAt(0).toUpperCase();
+  }
+
+  function getMemberName(member) {
+    return member?.displayName || member?.email || "Guest";
+  }
+
+  function setLocalMicrophoneEnabled(enabled) {
+    if (!localStreamRef.current) {
+      return;
+    }
+
+    localStreamRef.current.getAudioTracks().forEach((track) => {
+      track.enabled = enabled;
+    });
+  }
+
+  function applyVoiceMuteState(nextMuted) {
+    voiceMutedRef.current = nextMuted;
+    setVoiceMuted(nextMuted);
+    setLocalMicrophoneEnabled(!nextMuted && !voiceServerMutedRef.current);
   }
 
   function setUserSpeaking(uid, isSpeaking) {
@@ -568,6 +594,9 @@ function App() {
       await updateDoc(memberRef, {
         displayName: cleanUsername,
         email: currentUser.email,
+        role,
+        removed: false,
+        kicked: false,
         updatedAt: serverTimestamp(),
       });
 
@@ -1187,7 +1216,162 @@ function App() {
       await deleteDoc(doc(db, "messages", messageId));
     } catch (error) {
       console.error("Mesaj silinemedi:", error);
-      alert("Mesaj silinemedi. Sadece kendi mesajlarını silebilirsin.");
+      alert("Mesaj silinemedi. Kendi mesajını veya sunucu sahibiysen üyelerin mesajlarını silebilirsin.");
+    }
+  }
+
+  async function kickMemberFromServer(member) {
+    if (!isActiveServerOwner || !activeServer || !currentUser || moderationActionLoading) {
+      return;
+    }
+
+    if (!member?.uid || member.uid === currentUser.uid || member.role === "owner") {
+      return;
+    }
+
+    const memberName = getMemberName(member);
+    const shouldKick = confirm(
+      `${memberName} sunucudan atılsın mı? Bu kişi davet koduyla tekrar katılabilir.`
+    );
+
+    if (!shouldKick) {
+      return;
+    }
+
+    try {
+      setModerationActionLoading(true);
+
+      const activeParticipantDeletes = voiceChannels.map((voiceChannel) => {
+        const roomId = getVoiceRoomId(activeServer.id, voiceChannel.id);
+        return deleteDoc(
+          doc(db, "voiceRooms", roomId, "participants", member.uid)
+        );
+      });
+
+      await Promise.allSettled(activeParticipantDeletes);
+
+      await updateDoc(doc(db, "members", getMemberDocumentId(activeServer.id, member.uid)), {
+        removed: true,
+        kicked: true,
+        online: false,
+        voiceServerMuted: false,
+        removedAt: serverTimestamp(),
+        removedByUid: currentUser.uid,
+        updatedAt: serverTimestamp(),
+      });
+
+      await deleteDoc(doc(db, "userServers", member.uid, "servers", activeServer.id));
+    } catch (error) {
+      console.error("Üye sunucudan atılamadı:", error);
+      alert("Üye sunucudan atılamadı. Firestore Rules ayarlarını kontrol et.");
+    } finally {
+      setModerationActionLoading(false);
+    }
+  }
+
+  async function kickVoiceParticipant(participant) {
+    if (!isActiveServerOwner || !activeServer || !currentUser || moderationActionLoading) {
+      return;
+    }
+
+    if (!participant?.uid || participant.uid === currentUser.uid) {
+      return;
+    }
+
+    const participantName = participant.displayName || "Guest";
+    const shouldKick = confirm(`${participantName} ses kanalından atılsın mı?`);
+
+    if (!shouldKick) {
+      return;
+    }
+
+    try {
+      setModerationActionLoading(true);
+      const roomId = getVoiceRoomId(activeServer.id, participant.channelId);
+      await deleteDoc(doc(db, "voiceRooms", roomId, "participants", participant.uid));
+    } catch (error) {
+      console.error("Kullanıcı sesten atılamadı:", error);
+      alert("Kullanıcı sesten atılamadı. Firebase bağlantısını kontrol et.");
+    } finally {
+      setModerationActionLoading(false);
+    }
+  }
+
+  async function toggleServerMuteParticipant(participant) {
+    if (!isActiveServerOwner || !activeServer || !currentUser || moderationActionLoading) {
+      return;
+    }
+
+    if (!participant?.uid || participant.uid === currentUser.uid) {
+      return;
+    }
+
+    const participantName = participant.displayName || "Guest";
+    const nextServerMuted = participant.serverMuted !== true;
+    const shouldChange = confirm(
+      nextServerMuted
+        ? `${participantName} sunucu tarafından susturulsun mu? Kullanıcı kendi mikrofonunu açamayacak.`
+        : `${participantName} için susturmayı kaldırma izni geri verilsin mi? Mikrofonu otomatik açılmayacak.`
+    );
+
+    if (!shouldChange) {
+      return;
+    }
+
+    try {
+      setModerationActionLoading(true);
+      const roomId = getVoiceRoomId(activeServer.id, participant.channelId);
+      const participantRef = doc(
+        db,
+        "voiceRooms",
+        roomId,
+        "participants",
+        participant.uid
+      );
+
+      const memberRef = doc(
+        db,
+        "members",
+        getMemberDocumentId(activeServer.id, participant.uid)
+      );
+
+      if (nextServerMuted) {
+        await Promise.all([
+          updateDoc(participantRef, {
+            serverMuted: true,
+            muted: true,
+            serverMutedByUid: currentUser.uid,
+            serverMutedAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          }),
+          updateDoc(memberRef, {
+            voiceServerMuted: true,
+            voiceServerMutedByUid: currentUser.uid,
+            voiceServerMutedAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          }),
+        ]);
+        return;
+      }
+
+      await Promise.all([
+        updateDoc(participantRef, {
+          serverMuted: false,
+          serverMutedByUid: null,
+          serverUnmutedAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        }),
+        updateDoc(memberRef, {
+          voiceServerMuted: false,
+          voiceServerUnmutedAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        }),
+      ]);
+    } catch (error) {
+      console.error("Susturma durumu değiştirilemedi:", error);
+      alert("Susturma durumu değiştirilemedi. Firebase bağlantısını kontrol et.");
+    } finally {
+      setModerationActionLoading(false);
     }
   }
 
@@ -1783,11 +1967,17 @@ function App() {
   }
 
   async function leaveVoiceRoom(updateState = true) {
+    if (voiceLeaveInProgressRef.current) {
+      return;
+    }
+
+    voiceLeaveInProgressRef.current = true;
     const participantRef = participantDocRef.current;
 
-    voiceJoinedRef.current = false;
+    try {
+      voiceJoinedRef.current = false;
 
-    await stopScreenShare(false, false);
+      await stopScreenShare(false, false);
 
     if (signalUnsubscribeRef.current) {
       signalUnsubscribeRef.current();
@@ -1825,11 +2015,19 @@ function App() {
       setVoiceStatus("Sese katılmadın.");
     }
 
-    if (participantRef) {
-      try {
-        await deleteDoc(participantRef);
-      } catch (error) {
-        console.warn("Ses katılımcısı silinemedi:", error);
+      if (participantRef) {
+        try {
+          await deleteDoc(participantRef);
+        } catch (error) {
+          console.warn("Ses katılımcısı silinemedi:", error);
+        }
+      }
+    } finally {
+      voiceServerMutedRef.current = false;
+      voiceLeaveInProgressRef.current = false;
+
+      if (updateState) {
+        setVoiceServerMuted(false);
       }
     }
   }
@@ -1866,6 +2064,23 @@ function App() {
       setVoiceError("");
       setVoiceStatus("Mikrofon izni bekleniyor...");
 
+      const currentMemberRef = doc(
+        db,
+        "members",
+        getMemberDocumentId(activeServerId, currentUser.uid)
+      );
+      const currentMemberSnap = await getDoc(currentMemberRef);
+      const shouldBeServerMuted =
+        currentMemberSnap.exists() && currentMemberSnap.data().voiceServerMuted === true;
+
+      if (shouldBeServerMuted) {
+        voiceMutedRef.current = true;
+        setVoiceMuted(true);
+      }
+
+      voiceServerMutedRef.current = shouldBeServerMuted;
+      setVoiceServerMuted(shouldBeServerMuted);
+
       const localStream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
@@ -1876,7 +2091,7 @@ function App() {
       });
 
       localStream.getAudioTracks().forEach((track) => {
-        track.enabled = !voiceMutedRef.current;
+        track.enabled = !voiceMutedRef.current && !voiceServerMutedRef.current;
       });
 
       localStreamRef.current = localStream;
@@ -1915,7 +2130,9 @@ function App() {
           uid: currentUser.uid,
           email: currentUser.email,
           displayName: username.trim() || "Guest",
-          muted: voiceMutedRef.current,
+          muted: voiceMutedRef.current || shouldBeServerMuted,
+          serverMuted: shouldBeServerMuted,
+          serverMutedByUid: shouldBeServerMuted ? "server" : null,
           screenSharing: false,
           joinedAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
@@ -1941,16 +2158,16 @@ function App() {
   }
 
   async function toggleVoiceMute() {
+    if (voiceServerMutedRef.current) {
+      setVoiceStatus(
+        "Sunucu sahibi mikrofonunu kapattı. Açma izni geri verilene kadar mikrofonu açamazsın."
+      );
+      return;
+    }
+
     const nextMuted = !voiceMuted;
 
-    voiceMutedRef.current = nextMuted;
-    setVoiceMuted(nextMuted);
-
-    if (localStreamRef.current) {
-      localStreamRef.current.getAudioTracks().forEach((track) => {
-        track.enabled = !nextMuted;
-      });
-    }
+    applyVoiceMuteState(nextMuted);
 
     if (participantDocRef.current) {
       try {
@@ -2391,6 +2608,48 @@ function App() {
   }, [username, voiceJoined]);
 
   useEffect(() => {
+    if (!voiceJoined || !currentUser || !participantDocRef.current) {
+      return;
+    }
+
+    const unsubscribe = onSnapshot(
+      participantDocRef.current,
+      (snapshot) => {
+        if (!snapshot.exists()) {
+          if (!voiceLeaveInProgressRef.current && voiceJoinedRef.current) {
+            leaveVoiceRoom(true).then(() => {
+              setVoiceStatus("Ses kanalından çıkarıldın.");
+            });
+          }
+
+          return;
+        }
+
+        const participantData = snapshot.data();
+        const nextServerMuted = participantData.serverMuted === true;
+
+        voiceServerMutedRef.current = nextServerMuted;
+        setVoiceServerMuted(nextServerMuted);
+
+        if (nextServerMuted) {
+          voiceMutedRef.current = true;
+          setVoiceMuted(true);
+          setLocalMicrophoneEnabled(false);
+          setVoiceStatus("Sunucu sahibi mikrofonunu kapattı.");
+          return;
+        }
+
+        setLocalMicrophoneEnabled(!voiceMutedRef.current);
+      },
+      (error) => {
+        console.warn("Kendi ses durumu dinlenemedi:", error);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [voiceJoined, currentUser?.uid]);
+
+  useEffect(() => {
     voiceMutedRef.current = voiceMuted;
   }, [voiceMuted]);
 
@@ -2700,19 +2959,24 @@ function App() {
 
                       {channelParticipants.map((participant) => {
                         const isCurrentUser = participant.uid === currentUser.uid;
+                        const effectiveMuted = participant.serverMuted || participant.muted;
                         const isSpeaking =
-                          speakingUsers[participant.uid] && !participant.muted;
-                        const participantStatus = participant.screenSharing
-                          ? participant.muted
-                            ? "Ekran paylaşıyor · mikrofon kapalı"
-                            : isSpeaking
-                              ? "Ekran paylaşıyor · konuşuyor"
-                              : "Ekran paylaşıyor"
-                          : participant.muted
-                            ? "Mikrofon kapalı"
-                            : isSpeaking
-                              ? "Konuşuyor"
-                              : "Sessiz";
+                          speakingUsers[participant.uid] && !effectiveMuted;
+                        const canModerateVoiceParticipant =
+                          isActiveServerOwner && !isCurrentUser;
+                        const participantStatus = participant.serverMuted
+                          ? "Sunucu tarafından susturuldu"
+                          : participant.screenSharing
+                            ? effectiveMuted
+                              ? "Ekran paylaşıyor · mikrofon kapalı"
+                              : isSpeaking
+                                ? "Ekran paylaşıyor · konuşuyor"
+                                : "Ekran paylaşıyor"
+                            : effectiveMuted
+                              ? "Mikrofon kapalı"
+                              : isSpeaking
+                                ? "Konuşuyor"
+                                : "Sessiz";
 
                         return (
                           <div
@@ -2742,14 +3006,46 @@ function App() {
                             </div>
 
                             <span className="voiceParticipantIcon">
-                              {participant.screenSharing
-                                ? "🖥️"
-                                : participant.muted
-                                  ? "🔇"
-                                  : isSpeaking
-                                    ? "🟢"
-                                    : "🎙️"}
+                              {participant.serverMuted
+                                ? "⛔"
+                                : participant.screenSharing
+                                  ? "🖥️"
+                                  : effectiveMuted
+                                    ? "🔇"
+                                    : isSpeaking
+                                      ? "🟢"
+                                      : "🎙️"}
                             </span>
+
+                            {canModerateVoiceParticipant && (
+                              <div className="voiceParticipantModeration">
+                                <button
+                                  className={
+                                    participant.serverMuted
+                                      ? "voiceModButton unmute"
+                                      : "voiceModButton mute"
+                                  }
+                                  onClick={() => toggleServerMuteParticipant(participant)}
+                                  disabled={moderationActionLoading}
+                                  title={
+                                    participant.serverMuted
+                                      ? "Susturmayı kaldırma iznini geri ver"
+                                      : "Kullanıcıyı sunucu tarafından sustur"
+                                  }
+                                >
+                                  {participant.serverMuted ? "İzin Ver" : "Sustur"}
+                                </button>
+
+                                <button
+                                  className="voiceModButton kick"
+                                  onClick={() => kickVoiceParticipant(participant)}
+                                  disabled={moderationActionLoading}
+                                  title="Ses kanalından at"
+                                >
+                                  At
+                                </button>
+                              </div>
+                            )}
                           </div>
                         );
                       })}
@@ -2773,8 +3069,18 @@ function App() {
                           <button
                             className="voiceMuteButton"
                             onClick={toggleVoiceMute}
+                            disabled={voiceServerMuted}
+                            title={
+                              voiceServerMuted
+                                ? "Sunucu sahibi mikrofonunu kapattı. Açma izni verilince tekrar açabilirsin."
+                                : "Mikrofonu aç/kapat"
+                            }
                           >
-                            {voiceMuted ? "Mikrofonu Aç" : "Mikrofonu Kapat"}
+                            {voiceServerMuted
+                              ? "Susturuldun"
+                              : voiceMuted
+                                ? "Mikrofonu Aç"
+                                : "Mikrofonu Kapat"}
                           </button>
 
                           <button
@@ -2955,6 +3261,7 @@ function App() {
 
               {filteredMessages.map((message) => {
                 const isOwnMessage = message.uid === currentUser.uid;
+                const canDeleteMessage = isOwnMessage || isActiveServerOwner;
 
                 return (
                   <div className="message" key={message.id}>
@@ -2967,7 +3274,7 @@ function App() {
                         <strong>{message.user}</strong>
                         <span>{message.time}</span>
 
-                        {isOwnMessage && (
+                        {canDeleteMessage && (
                           <button
                             className="deleteButton"
                             onClick={() => deleteMessage(message.id)}
@@ -3015,13 +3322,13 @@ function App() {
         <aside className="memberBar">
           <div className="memberHeader">
             <h3>Üyeler</h3>
-            <span title="Çevrimiçi / toplam üye">{onlineMemberCount}/{members.length}</span>
+            <span title="Çevrimiçi / toplam üye">{onlineMemberCount}/{activeMemberCount}</span>
           </div>
 
           <div className="memberList">
             {memberError && <div className="memberEmpty">{memberError}</div>}
 
-            {!memberError && members.length === 0 && (
+            {!memberError && activeMemberCount === 0 && (
               <div className="memberEmpty">Henüz üye bilgisi yok.</div>
             )}
 
@@ -3054,6 +3361,19 @@ function App() {
                       {presenceLabel} · {roleLabel}
                     </span>
                   </div>
+
+                  {isActiveServerOwner &&
+                    member.uid !== currentUser.uid &&
+                    member.role !== "owner" && (
+                      <button
+                        className="memberKickButton"
+                        onClick={() => kickMemberFromServer(member)}
+                        disabled={moderationActionLoading}
+                        title="Üyeyi sunucudan at"
+                      >
+                        At
+                      </button>
+                    )}
                 </div>
               );
             })}
