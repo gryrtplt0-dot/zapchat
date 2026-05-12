@@ -222,6 +222,8 @@ function App() {
   const [activeVoiceChannelId, setActiveVoiceChannelId] = useState(null);
   const [channelActionLoading, setChannelActionLoading] = useState(false);
   const [moderationActionLoading, setModerationActionLoading] = useState(false);
+  const [textChannelsExpanded, setTextChannelsExpanded] = useState(true);
+  const [voiceChannelsExpanded, setVoiceChannelsExpanded] = useState(true);
 
   const messagesEndRef = useRef(null);
   const localStreamRef = useRef(null);
@@ -2894,79 +2896,107 @@ function App() {
 
         {activeServer ? (
           <>
-            <div className="channelSectionHeader">
-              <div className="channelSectionTitle">Metin Kanalları</div>
-
-              {isActiveServerOwner && (
+            <section className="channelCategorySection">
+              <div className="channelSectionHeader channelSectionHeaderFancy">
                 <button
-                  className="channelAddButton"
-                  onClick={() => addChannel("text")}
-                  disabled={channelActionLoading}
-                  title="Metin kanalı ekle"
+                  className="channelSectionToggle"
+                  onClick={() => setTextChannelsExpanded((previous) => !previous)}
+                  type="button"
                 >
-                  +
+                  <span className="channelSectionLine" />
+                  <span className="channelSectionTitle">Metin Kanalları</span>
+                  <span className="channelSectionLine" />
+                  <span className="channelSectionChevron">
+                    {textChannelsExpanded ? "⌄" : "›"}
+                  </span>
                 </button>
-              )}
-            </div>
 
-            <div className="channels">
-              {textChannels.map((channel) => (
-                <div className="channelRow" key={channel.id}>
+                {isActiveServerOwner && (
                   <button
-                    className={
-                      activeChannel === channel.id
-                        ? "channelButton active"
-                        : "channelButton"
-                    }
-                    onClick={() => selectTextChannel(channel.id)}
+                    className="channelAddButton"
+                    onClick={() => addChannel("text")}
+                    disabled={channelActionLoading}
+                    title="Metin kanalı ekle"
                   >
-                    <span>#</span>
-                    {channel.name}
+                    +
                   </button>
+                )}
+              </div>
 
-                  {isActiveServerOwner && (
-                    <>
+              {textChannelsExpanded && (
+                <div className="channels">
+                  {textChannels.map((channel) => (
+                    <div className="channelRow" key={channel.id}>
                       <button
-                        className="channelEditButton"
-                        onClick={() => renameChannel("text", channel.id)}
-                        disabled={channelActionLoading}
-                        title="Metin kanalını düzenle"
+                        className={
+                          activeChannel === channel.id
+                            ? "channelButton active"
+                            : "channelButton"
+                        }
+                        onClick={() => selectTextChannel(channel.id)}
                       >
-                        ✎
+                        <span className="channelButtonIcon">#</span>
+                        <span className="channelButtonLabel">{channel.name}</span>
                       </button>
 
-                      {textChannels.length > 1 && (
-                        <button
-                          className="channelDeleteButton"
-                          onClick={() => deleteChannel("text", channel.id)}
-                          disabled={channelActionLoading}
-                          title="Metin kanalını sil"
-                        >
-                          ×
-                        </button>
+                      {isActiveServerOwner && (
+                        <div className="channelRowActions">
+                          <button
+                            className="channelEditButton"
+                            onClick={() => renameChannel("text", channel.id)}
+                            disabled={channelActionLoading}
+                            title="Metin kanalını düzenle"
+                          >
+                            ✎
+                          </button>
+
+                          {textChannels.length > 1 && (
+                            <button
+                              className="channelDeleteButton"
+                              onClick={() => deleteChannel("text", channel.id)}
+                              disabled={channelActionLoading}
+                              title="Metin kanalını sil"
+                            >
+                              ×
+                            </button>
+                          )}
+                        </div>
                       )}
-                    </>
-                  )}
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-
-            <div className="channelSectionHeader">
-              <div className="channelSectionTitle">Ses Kanalları</div>
-
-              {isActiveServerOwner && (
-                <button
-                  className="channelAddButton"
-                  onClick={() => addChannel("voice")}
-                  disabled={channelActionLoading}
-                  title="Ses kanalı ekle"
-                >
-                  +
-                </button>
               )}
-            </div>
+            </section>
 
-            <div className="voiceChannelList">
+            <section className="channelCategorySection">
+              <div className="channelSectionHeader channelSectionHeaderFancy">
+                <button
+                  className="channelSectionToggle"
+                  onClick={() => setVoiceChannelsExpanded((previous) => !previous)}
+                  type="button"
+                >
+                  <span className="channelSectionLine" />
+                  <span className="channelSectionTitle">Ses Kanalları</span>
+                  <span className="channelSectionLine" />
+                  <span className="channelSectionChevron">
+                    {voiceChannelsExpanded ? "⌄" : "›"}
+                  </span>
+                </button>
+
+                {isActiveServerOwner && (
+                  <button
+                    className="channelAddButton"
+                    onClick={() => addChannel("voice")}
+                    disabled={channelActionLoading}
+                    title="Ses kanalı ekle"
+                  >
+                    +
+                  </button>
+                )}
+              </div>
+
+              {voiceChannelsExpanded && (
+                <div className="voiceChannelList">
               {voiceChannels.map((voiceChannel) => {
                 const channelParticipants = getVoiceParticipantsForChannel(
                   voiceChannel.id
@@ -2981,10 +3011,11 @@ function App() {
                   >
                     <div className="voiceChannelTitle">
                       <span>🔊</span>
-                      <div>
+                      <div className="voiceChannelMeta">
                         <strong>{voiceChannel.name}</strong>
                         <small>{channelParticipants.length} kişi bağlı</small>
                       </div>
+                      <span className="voiceChannelCount">{channelParticipants.length}</span>
 
                       {isActiveServerOwner && (
                         <div className="voiceChannelManageButtons">
@@ -3193,7 +3224,9 @@ function App() {
               })}
 
               {voiceError && <div className="voiceErrorText">{voiceError}</div>}
-            </div>
+                </div>
+              )}
+            </section>
           </>
         ) : (
           <div className="sidebarHint">
