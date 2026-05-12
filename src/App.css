@@ -236,6 +236,7 @@ input {
   color: #ffffff;
 }
 
+.channelEditButton,
 .channelDeleteButton {
   width: 28px;
   height: 28px;
@@ -244,11 +245,16 @@ input {
   color: #7f8794;
   border-radius: 9px;
   cursor: pointer;
-  font-size: 18px;
+  font-size: 16px;
   line-height: 1;
   display: grid;
   place-items: center;
   flex-shrink: 0;
+}
+
+.channelEditButton:hover {
+  background: rgba(255, 176, 32, 0.14);
+  color: #ffcf7a;
 }
 
 .channelDeleteButton:hover {
@@ -256,6 +262,7 @@ input {
   color: #ffb0b0;
 }
 
+.channelEditButton:disabled,
 .channelDeleteButton:disabled {
   opacity: 0.6;
   cursor: not-allowed;
@@ -913,6 +920,14 @@ input {
   font-size: 12px;
 }
 
+.voiceChannelManageButtons {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.voiceChannelEditButton,
 .voiceChannelDeleteButton {
   width: 28px;
   height: 28px;
@@ -921,11 +936,16 @@ input {
   color: #7f8794;
   border-radius: 9px;
   cursor: pointer;
-  font-size: 18px;
+  font-size: 16px;
   line-height: 1;
   display: grid;
   place-items: center;
   flex-shrink: 0;
+}
+
+.voiceChannelEditButton:hover {
+  background: rgba(255, 176, 32, 0.14);
+  color: #ffcf7a;
 }
 
 .voiceChannelDeleteButton:hover {
@@ -933,6 +953,7 @@ input {
   color: #ffb0b0;
 }
 
+.voiceChannelEditButton:disabled,
 .voiceChannelDeleteButton:disabled {
   opacity: 0.6;
   cursor: not-allowed;

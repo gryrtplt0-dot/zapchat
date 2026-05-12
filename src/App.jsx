@@ -770,6 +770,124 @@ function App() {
     }
   }
 
+  async function renameChannel(type, channelId) {
+    if (!isActiveServerOwner || channelActionLoading) {
+      return;
+    }
+
+    const existingChannels = type === "voice" ? voiceChannels : textChannels;
+    const editedChannel = existingChannels.find((channel) => channel.id === channelId);
+
+    if (!editedChannel) {
+      return;
+    }
+
+    const label = type === "voice" ? "ses" : "metin";
+    const rawName = prompt(
+      `${editedChannel.name} ${label} kanalının yeni adı ne olsun?`,
+      editedChannel.name
+    );
+
+    if (rawName === null) {
+      return;
+    }
+
+    const cleanName = normalizeChannelName(rawName);
+
+    if (cleanName.length < 2) {
+      alert("Kanal adı en az 2 karakter olmalı.");
+      return;
+    }
+
+    if (cleanName.length > 24) {
+      alert("Kanal adı en fazla 24 karakter olabilir.");
+      return;
+    }
+
+    const sameName =
+      editedChannel.name.toLocaleLowerCase("tr-TR") ===
+      cleanName.toLocaleLowerCase("tr-TR");
+
+    if (sameName) {
+      return;
+    }
+
+    const alreadyExists = existingChannels.some((channel) => {
+      return (
+        channel.id !== channelId &&
+        channel.name.toLocaleLowerCase("tr-TR") ===
+          cleanName.toLocaleLowerCase("tr-TR")
+      );
+    });
+
+    if (alreadyExists) {
+      alert("Bu isimde bir kanal zaten var.");
+      return;
+    }
+
+    const nextChannels = existingChannels.map((channel) => {
+      if (channel.id !== channelId) {
+        return channel;
+      }
+
+      return {
+        ...channel,
+        name: cleanName,
+        updatedAt: Date.now(),
+      };
+    });
+
+    try {
+      setChannelActionLoading(true);
+
+      if (type === "voice") {
+        await updateServerChannels(textChannels, nextChannels);
+
+        const roomId = getVoiceRoomId(activeServer.id, channelId);
+
+        await setDoc(
+          doc(db, "voiceRooms", roomId),
+          {
+            serverId: activeServer.id,
+            channelId,
+            name: cleanName,
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
+
+        const participantsRef = collection(
+          db,
+          "voiceRooms",
+          roomId,
+          "participants"
+        );
+        const participantsSnapshot = await getDocs(participantsRef);
+        const participantUpdates = participantsSnapshot.docs.map((participantDoc) => {
+          return updateDoc(participantDoc.ref, {
+            voiceChannelName: cleanName,
+            updatedAt: serverTimestamp(),
+          });
+        });
+
+        await Promise.all(participantUpdates);
+
+        if (voiceJoined && activeVoiceChannelId === channelId) {
+          setVoiceStatus(`${cleanName} ses kanalındasın.`);
+        }
+
+        return;
+      }
+
+      await updateServerChannels(nextChannels, voiceChannels);
+    } catch (error) {
+      console.error("Kanal adı değiştirilemedi:", error);
+      alert("Kanal adı değiştirilemedi. Firebase Rules veya bağlantı ayarlarını kontrol et.");
+    } finally {
+      setChannelActionLoading(false);
+    }
+  }
+
   async function deleteChannel(type, channelId) {
     if (!isActiveServerOwner || channelActionLoading) {
       return;
@@ -1907,15 +2025,28 @@ function App() {
                     {channel.name}
                   </button>
 
-                  {isActiveServerOwner && textChannels.length > 1 && (
-                    <button
-                      className="channelDeleteButton"
-                      onClick={() => deleteChannel("text", channel.id)}
-                      disabled={channelActionLoading}
-                      title="Metin kanalını sil"
-                    >
-                      ×
-                    </button>
+                  {isActiveServerOwner && (
+                    <>
+                      <button
+                        className="channelEditButton"
+                        onClick={() => renameChannel("text", channel.id)}
+                        disabled={channelActionLoading}
+                        title="Metin kanalını düzenle"
+                      >
+                        ✎
+                      </button>
+
+                      {textChannels.length > 1 && (
+                        <button
+                          className="channelDeleteButton"
+                          onClick={() => deleteChannel("text", channel.id)}
+                          disabled={channelActionLoading}
+                          title="Metin kanalını sil"
+                        >
+                          ×
+                        </button>
+                      )}
+                    </>
                   )}
                 </div>
               ))}
@@ -1956,15 +2087,28 @@ function App() {
                         <small>{channelParticipants.length} kişi bağlı</small>
                       </div>
 
-                      {isActiveServerOwner && voiceChannels.length > 1 && (
-                        <button
-                          className="voiceChannelDeleteButton"
-                          onClick={() => deleteChannel("voice", voiceChannel.id)}
-                          disabled={channelActionLoading}
-                          title="Ses kanalını sil"
-                        >
-                          ×
-                        </button>
+                      {isActiveServerOwner && (
+                        <div className="voiceChannelManageButtons">
+                          <button
+                            className="voiceChannelEditButton"
+                            onClick={() => renameChannel("voice", voiceChannel.id)}
+                            disabled={channelActionLoading}
+                            title="Ses kanalını düzenle"
+                          >
+                            ✎
+                          </button>
+
+                          {voiceChannels.length > 1 && (
+                            <button
+                              className="voiceChannelDeleteButton"
+                              onClick={() => deleteChannel("voice", voiceChannel.id)}
+                              disabled={channelActionLoading}
+                              title="Ses kanalını sil"
+                            >
+                              ×
+                            </button>
+                          )}
+                        </div>
                       )}
                     </div>
 
