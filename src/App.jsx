@@ -28,6 +28,9 @@ const ICE_SERVERS = [
   { urls: "stun:stun1.l.google.com:19302" },
 ];
 
+const PRESENCE_HEARTBEAT_MS = 25000;
+const ONLINE_TIMEOUT_MS = 70000;
+
 const DEFAULT_TEXT_CHANNELS = [
   { id: "general", name: "genel" },
   { id: "gaming", name: "oyun" },
@@ -107,6 +110,26 @@ function getNormalizedChannels(rawChannels, fallbackChannels) {
   return cleanChannels.length > 0 ? cleanChannels : fallbackChannels;
 }
 
+function getTimestampMillis(value) {
+  if (!value) {
+    return 0;
+  }
+
+  if (typeof value === "number") {
+    return value;
+  }
+
+  if (typeof value.toMillis === "function") {
+    return value.toMillis();
+  }
+
+  if (typeof value.seconds === "number") {
+    return value.seconds * 1000;
+  }
+
+  return 0;
+}
+
 function RemoteAudio({ stream }) {
   const audioRef = useRef(null);
 
@@ -167,6 +190,7 @@ function App() {
   const [messages, setMessages] = useState([]);
   const [members, setMembers] = useState([]);
   const [memberError, setMemberError] = useState("");
+  const [presenceTick, setPresenceTick] = useState(() => Date.now());
 
   const [currentUser, setCurrentUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -292,6 +316,44 @@ function App() {
     remoteScreenStreams,
   ]);
 
+
+  const displayedMembers = useMemo(() => {
+    return members
+      .map((member) => {
+        const lastSeenAt = Math.max(
+          getTimestampMillis(member.lastSeen),
+          getTimestampMillis(member.presenceUpdatedAt)
+        );
+        const isCurrentMember = member.uid === currentUser?.uid;
+        const isRecentlySeen =
+          lastSeenAt > 0 && presenceTick - lastSeenAt < ONLINE_TIMEOUT_MS;
+
+        return {
+          ...member,
+          lastSeenAt,
+          isOnline: isCurrentMember || (member.online === true && isRecentlySeen),
+        };
+      })
+      .sort((a, b) => {
+        if (a.isOnline !== b.isOnline) {
+          return a.isOnline ? -1 : 1;
+        }
+
+        if (a.role === "owner" && b.role !== "owner") {
+          return -1;
+        }
+
+        if (a.role !== "owner" && b.role === "owner") {
+          return 1;
+        }
+
+        return (a.displayName || "").localeCompare(b.displayName || "");
+      });
+  }, [members, presenceTick, currentUser?.uid]);
+
+  const onlineMemberCount = displayedMembers.filter((member) => {
+    return member.isOnline;
+  }).length;
 
   const fullscreenScreenShare = useMemo(() => {
     if (!fullscreenScreenShareUid) {
@@ -518,9 +580,45 @@ function App() {
       email: currentUser.email,
       displayName: cleanUsername,
       role,
+      online: true,
+      lastSeen: serverTimestamp(),
+      presenceUpdatedAt: serverTimestamp(),
       joinedAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
+  }
+
+  async function updateCurrentMemberPresence(isOnline) {
+    if (!currentUser || !activeServer) {
+      return;
+    }
+
+    const cleanUsername = username.trim() || "Guest";
+    const role =
+      activeServer.createdByUid === currentUser.uid
+        ? "owner"
+        : activeServer.role || "member";
+    const memberRef = doc(
+      db,
+      "members",
+      getMemberDocumentId(activeServer.id, currentUser.uid)
+    );
+
+    await setDoc(
+      memberRef,
+      {
+        serverId: activeServer.id,
+        uid: currentUser.uid,
+        email: currentUser.email,
+        displayName: cleanUsername,
+        role,
+        online: isOnline,
+        lastSeen: serverTimestamp(),
+        presenceUpdatedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
   }
 
   function openServerModal() {
@@ -2108,6 +2206,55 @@ function App() {
   }, [currentUser, activeServerId]);
 
   useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setPresenceTick(Date.now());
+    }, 10000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!currentUser || !activeServer) {
+      return;
+    }
+
+    let cleanupStarted = false;
+
+    const markOnline = () => {
+      if (cleanupStarted) {
+        return;
+      }
+
+      updateCurrentMemberPresence(true).catch((error) => {
+        console.warn("Online durumu güncellenemedi:", error);
+      });
+    };
+
+    const markOffline = () => {
+      cleanupStarted = true;
+      updateCurrentMemberPresence(false).catch((error) => {
+        console.warn("Offline durumu güncellenemedi:", error);
+      });
+    };
+
+    markOnline();
+
+    const heartbeatId = window.setInterval(markOnline, PRESENCE_HEARTBEAT_MS);
+
+    window.addEventListener("pagehide", markOffline);
+    window.addEventListener("beforeunload", markOffline);
+
+    return () => {
+      window.clearInterval(heartbeatId);
+      window.removeEventListener("pagehide", markOffline);
+      window.removeEventListener("beforeunload", markOffline);
+      markOffline();
+    };
+  }, [currentUser, activeServer?.id, username]);
+
+  useEffect(() => {
     if (!currentUser || !activeServerId) {
       setVoiceParticipants([]);
       return;
@@ -2868,7 +3015,7 @@ function App() {
         <aside className="memberBar">
           <div className="memberHeader">
             <h3>Üyeler</h3>
-            <span>{members.length}</span>
+            <span title="Çevrimiçi / toplam üye">{onlineMemberCount}/{members.length}</span>
           </div>
 
           <div className="memberList">
@@ -2878,20 +3025,38 @@ function App() {
               <div className="memberEmpty">Henüz üye bilgisi yok.</div>
             )}
 
-            {members.map((member) => (
-              <div className="memberItem" key={member.id}>
-                <div className="memberAvatar">
-                  {getUserInitial(member.displayName)}
-                </div>
+            {displayedMembers.map((member) => {
+              const roleLabel = member.role === "owner" ? "Sunucu sahibi" : "Üye";
+              const presenceLabel = member.isOnline ? "Çevrimiçi" : "Çevrimdışı";
 
-                <div className="memberInfo">
-                  <strong>{member.displayName || "Guest"}</strong>
-                  <span>
-                    {member.role === "owner" ? "Sunucu sahibi" : "Üye"}
-                  </span>
+              return (
+                <div
+                  className={
+                    member.isOnline ? "memberItem online" : "memberItem offline"
+                  }
+                  key={member.id}
+                >
+                  <div className="memberAvatarWrap">
+                    <div className="memberAvatar">
+                      {getUserInitial(member.displayName)}
+                    </div>
+                    <span
+                      className={
+                        member.isOnline ? "memberStatusDot online" : "memberStatusDot offline"
+                      }
+                      title={presenceLabel}
+                    />
+                  </div>
+
+                  <div className="memberInfo">
+                    <strong>{member.displayName || "Guest"}</strong>
+                    <span>
+                      {presenceLabel} · {roleLabel}
+                    </span>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </aside>
       )}

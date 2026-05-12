@@ -789,6 +789,19 @@ input {
   border: 1px solid #252a35;
 }
 
+.memberItem.online {
+  border-color: rgba(69, 219, 137, 0.34);
+}
+
+.memberItem.offline {
+  opacity: 0.62;
+}
+
+.memberAvatarWrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
 .memberAvatar {
   width: 34px;
   height: 34px;
@@ -798,7 +811,24 @@ input {
   display: grid;
   place-items: center;
   font-weight: 900;
-  flex-shrink: 0;
+}
+
+.memberStatusDot {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  border: 2px solid #10131a;
+}
+
+.memberStatusDot.online {
+  background: #45db89;
+}
+
+.memberStatusDot.offline {
+  background: #6d7482;
 }
 
 .memberInfo {
