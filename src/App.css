@@ -151,14 +151,45 @@ input {
   background: #3a4254;
 }
 
-.channelSectionTitle {
+.channelSectionHeader {
   margin-top: 24px;
   margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.channelSectionTitle {
   color: #7f8794;
   font-size: 12px;
   text-transform: uppercase;
   font-weight: 700;
   letter-spacing: 0.7px;
+}
+
+.channelAddButton {
+  width: 26px;
+  height: 26px;
+  border: 1px solid #303644;
+  background: #222733;
+  color: #ffffff;
+  border-radius: 9px;
+  cursor: pointer;
+  font-weight: 900;
+  display: grid;
+  place-items: center;
+}
+
+.channelAddButton:hover {
+  background: #ffb020;
+  border-color: #ffb020;
+  color: #111318;
+}
+
+.channelAddButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .channels {
@@ -167,7 +198,15 @@ input {
   gap: 6px;
 }
 
+.channelRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .channelButton {
+  flex: 1;
+  min-width: 0;
   border: none;
   background: transparent;
   color: #aeb5c2;
@@ -178,6 +217,9 @@ input {
   display: flex;
   align-items: center;
   gap: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .channelButton span {
@@ -192,6 +234,31 @@ input {
 .channelButton.active {
   background: #2b3140;
   color: #ffffff;
+}
+
+.channelDeleteButton {
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  color: #7f8794;
+  border-radius: 9px;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.channelDeleteButton:hover {
+  background: rgba(255, 107, 107, 0.16);
+  color: #ffb0b0;
+}
+
+.channelDeleteButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .sidebarHint {
@@ -793,8 +860,14 @@ input {
 }
 
 
+.voiceChannelList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
 .voiceBox {
-  margin-top: 4px;
+  margin-top: 0;
   padding: 12px;
   background: #10131a;
   border: 1px solid #252a35;
@@ -810,6 +883,11 @@ input {
   display: flex;
   gap: 10px;
   align-items: center;
+}
+
+.voiceChannelTitle > div {
+  flex: 1;
+  min-width: 0;
 }
 
 .voiceChannelTitle > span {
@@ -833,6 +911,31 @@ input {
   margin-top: 2px;
   color: #8f96a3;
   font-size: 12px;
+}
+
+.voiceChannelDeleteButton {
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  color: #7f8794;
+  border-radius: 9px;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.voiceChannelDeleteButton:hover {
+  background: rgba(255, 107, 107, 0.16);
+  color: #ffb0b0;
+}
+
+.voiceChannelDeleteButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .voiceActions {

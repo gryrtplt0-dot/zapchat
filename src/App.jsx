@@ -1,5 +1,5 @@
 /* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   createUserWithEmailAndPassword,
   onAuthStateChanged,
@@ -27,6 +27,85 @@ const ICE_SERVERS = [
   { urls: "stun:stun.l.google.com:19302" },
   { urls: "stun:stun1.l.google.com:19302" },
 ];
+
+const DEFAULT_TEXT_CHANNELS = [
+  { id: "general", name: "genel" },
+  { id: "gaming", name: "oyun" },
+  { id: "study", name: "ders" },
+  { id: "random", name: "rastgele" },
+];
+
+const DEFAULT_VOICE_CHANNELS = [
+  { id: "main_voice", name: "Sesli Sohbet" },
+];
+
+function normalizeChannelName(value) {
+  return value.trim().replace(/\s+/g, " ");
+}
+
+function slugifyChannelName(value) {
+  const normalized = value
+    .trim()
+    .toLocaleLowerCase("tr-TR")
+    .replace(/ğ/g, "g")
+    .replace(/ü/g, "u")
+    .replace(/ş/g, "s")
+    .replace(/ı/g, "i")
+    .replace(/ö/g, "o")
+    .replace(/ç/g, "c")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+  return normalized || "kanal";
+}
+
+function createUniqueChannelId(type, channelName, existingChannels) {
+  const prefix = type === "voice" ? "voice" : "text";
+  const baseId = `${prefix}_${slugifyChannelName(channelName)}`;
+  const existingIds = new Set(existingChannels.map((channel) => channel.id));
+
+  if (!existingIds.has(baseId)) {
+    return baseId;
+  }
+
+  for (let index = 2; index < 1000; index++) {
+    const nextId = `${baseId}_${index}`;
+
+    if (!existingIds.has(nextId)) {
+      return nextId;
+    }
+  }
+
+  return `${baseId}_${Date.now()}`;
+}
+
+function getNormalizedChannels(rawChannels, fallbackChannels) {
+  if (!Array.isArray(rawChannels) || rawChannels.length === 0) {
+    return fallbackChannels;
+  }
+
+  const seenIds = new Set();
+  const cleanChannels = rawChannels
+    .map((channel) => {
+      const id = String(channel?.id || "").trim();
+      const name = normalizeChannelName(String(channel?.name || ""));
+
+      if (!id || !name || seenIds.has(id)) {
+        return null;
+      }
+
+      seenIds.add(id);
+
+      return {
+        id,
+        name,
+        createdAt: channel?.createdAt || 0,
+      };
+    })
+    .filter(Boolean);
+
+  return cleanChannels.length > 0 ? cleanChannels : fallbackChannels;
+}
 
 function RemoteAudio({ stream }) {
   const audioRef = useRef(null);
@@ -77,6 +156,8 @@ function App() {
   const [voiceError, setVoiceError] = useState("");
   const [remoteStreams, setRemoteStreams] = useState([]);
   const [speakingUsers, setSpeakingUsers] = useState({});
+  const [activeVoiceChannelId, setActiveVoiceChannelId] = useState(null);
+  const [channelActionLoading, setChannelActionLoading] = useState(false);
 
   const messagesEndRef = useRef(null);
   const localStreamRef = useRef(null);
@@ -85,16 +166,10 @@ function App() {
   const signalUnsubscribeRef = useRef(null);
   const participantDocRef = useRef(null);
   const voiceRoomIdRef = useRef(null);
+  const voiceChannelIdRef = useRef(null);
   const voiceJoinedRef = useRef(false);
   const voiceMutedRef = useRef(false);
   const audioMonitorsRef = useRef(new Map());
-
-  const channels = [
-    { id: "general", name: "genel" },
-    { id: "gaming", name: "oyun" },
-    { id: "study", name: "ders" },
-    { id: "random", name: "rastgele" },
-  ];
 
   const activeServer =
     servers.find((server) => server.id === activeServerId) || null;
@@ -104,16 +179,43 @@ function App() {
     currentUser &&
     activeServer.createdByUid === currentUser.uid;
 
+  const textChannels = useMemo(() => {
+    return getNormalizedChannels(activeServer?.textChannels, DEFAULT_TEXT_CHANNELS);
+  }, [activeServer?.textChannels]);
+
+  const voiceChannels = useMemo(() => {
+    return getNormalizedChannels(activeServer?.voiceChannels, DEFAULT_VOICE_CHANNELS);
+  }, [activeServer?.voiceChannels]);
+
+  const voiceChannelsKey = useMemo(() => {
+    return voiceChannels.map((channel) => channel.id).join("|");
+  }, [voiceChannels]);
+
   const activeChannelName =
-    channels.find((channel) => channel.id === activeChannel)?.name || "genel";
+    textChannels.find((channel) => channel.id === activeChannel)?.name ||
+    textChannels[0]?.name ||
+    "genel";
 
   const filteredMessages = messages.filter(
     (message) => message.channel === activeChannel
   );
 
-  const activeVoiceParticipants = voiceParticipants.filter(
-    (participant) => participant.serverId === activeServerId
-  );
+  const currentVoiceParticipants = useMemo(() => {
+    return voiceParticipants.filter((participant) => {
+      return (
+        participant.serverId === activeServerId &&
+        participant.channelId === activeVoiceChannelId
+      );
+    });
+  }, [voiceParticipants, activeServerId, activeVoiceChannelId]);
+
+  function getVoiceParticipantsForChannel(channelId) {
+    return voiceParticipants.filter((participant) => {
+      return (
+        participant.serverId === activeServerId && participant.channelId === channelId
+      );
+    });
+  }
 
   function getCurrentTime() {
     const now = new Date();
@@ -258,8 +360,8 @@ function App() {
     return `${serverId}_${uid}`;
   }
 
-  function getVoiceRoomId(serverId) {
-    return `${serverId}_main_voice`;
+  function getVoiceRoomId(serverId, voiceChannelId = "main_voice") {
+    return `${serverId}_${voiceChannelId}`;
   }
 
   function generateInviteCode() {
@@ -424,9 +526,12 @@ function App() {
       await setDoc(serverRef, {
         name: cleanName,
         inviteCode,
+        textChannels: DEFAULT_TEXT_CHANNELS,
+        voiceChannels: DEFAULT_VOICE_CHANNELS,
         createdByUid: currentUser.uid,
         createdByEmail: currentUser.email,
         createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
       });
 
       await setDoc(doc(db, "inviteCodes", inviteCode), {
@@ -591,6 +696,130 @@ function App() {
       setServers(previousServers);
       setActiveServerId(previousActiveServerId);
       alert("Sunucu silinemedi. Firebase Rules veya bağlantı ayarlarını kontrol et.");
+    }
+  }
+
+  async function updateServerChannels(nextTextChannels, nextVoiceChannels) {
+    if (!currentUser || !activeServer || !isActiveServerOwner) {
+      alert("Kanalları sadece sunucu sahibi düzenleyebilir.");
+      return;
+    }
+
+    await updateDoc(doc(db, "servers", activeServer.id), {
+      textChannels: nextTextChannels,
+      voiceChannels: nextVoiceChannels,
+      updatedAt: serverTimestamp(),
+    });
+  }
+
+  async function addChannel(type) {
+    if (!isActiveServerOwner || channelActionLoading) {
+      return;
+    }
+
+    const label = type === "voice" ? "ses" : "metin";
+    const rawName = prompt(`Yeni ${label} kanalı adı ne olsun?`);
+
+    if (rawName === null) {
+      return;
+    }
+
+    const cleanName = normalizeChannelName(rawName);
+
+    if (cleanName.length < 2) {
+      alert("Kanal adı en az 2 karakter olmalı.");
+      return;
+    }
+
+    if (cleanName.length > 24) {
+      alert("Kanal adı en fazla 24 karakter olabilir.");
+      return;
+    }
+
+    const existingChannels = type === "voice" ? voiceChannels : textChannels;
+    const alreadyExists = existingChannels.some((channel) => {
+      return channel.name.toLocaleLowerCase("tr-TR") === cleanName.toLocaleLowerCase("tr-TR");
+    });
+
+    if (alreadyExists) {
+      alert("Bu isimde bir kanal zaten var.");
+      return;
+    }
+
+    const newChannel = {
+      id: createUniqueChannelId(type, cleanName, existingChannels),
+      name: cleanName,
+      createdAt: Date.now(),
+    };
+
+    try {
+      setChannelActionLoading(true);
+
+      if (type === "voice") {
+        await updateServerChannels(textChannels, [...voiceChannels, newChannel]);
+        return;
+      }
+
+      await updateServerChannels([...textChannels, newChannel], voiceChannels);
+      setActiveChannel(newChannel.id);
+    } catch (error) {
+      console.error("Kanal eklenemedi:", error);
+      alert("Kanal eklenemedi. Firebase Rules veya bağlantı ayarlarını kontrol et.");
+    } finally {
+      setChannelActionLoading(false);
+    }
+  }
+
+  async function deleteChannel(type, channelId) {
+    if (!isActiveServerOwner || channelActionLoading) {
+      return;
+    }
+
+    const existingChannels = type === "voice" ? voiceChannels : textChannels;
+    const deletedChannel = existingChannels.find((channel) => channel.id === channelId);
+
+    if (!deletedChannel) {
+      return;
+    }
+
+    if (existingChannels.length <= 1) {
+      alert("Son kanalı silemezsin. Önce yeni bir kanal oluştur.");
+      return;
+    }
+
+    const label = type === "voice" ? "ses" : "metin";
+    const shouldDelete = confirm(
+      `#${deletedChannel.name} ${label} kanalı silinsin mi?`
+    );
+
+    if (!shouldDelete) {
+      return;
+    }
+
+    const nextChannels = existingChannels.filter((channel) => channel.id !== channelId);
+
+    try {
+      setChannelActionLoading(true);
+
+      if (type === "voice") {
+        if (voiceJoined && activeVoiceChannelId === channelId) {
+          await leaveVoiceRoom();
+        }
+
+        await updateServerChannels(textChannels, nextChannels);
+        return;
+      }
+
+      if (activeChannel === channelId) {
+        setActiveChannel(nextChannels[0]?.id || "general");
+      }
+
+      await updateServerChannels(nextChannels, voiceChannels);
+    } catch (error) {
+      console.error("Kanal silinemedi:", error);
+      alert("Kanal silinemedi. Firebase Rules veya bağlantı ayarlarını kontrol et.");
+    } finally {
+      setChannelActionLoading(false);
     }
   }
 
@@ -955,10 +1184,12 @@ function App() {
 
     participantDocRef.current = null;
     voiceRoomIdRef.current = null;
+    voiceChannelIdRef.current = null;
 
     if (updateState) {
       setVoiceJoined(false);
       setVoiceJoining(false);
+      setActiveVoiceChannelId(null);
       setRemoteStreams([]);
       setSpeakingUsers({});
       setVoiceStatus("Sese katılmadın.");
@@ -973,8 +1204,17 @@ function App() {
     }
   }
 
-  async function joinVoiceRoom() {
-    if (!currentUser || !activeServerId || voiceJoining || voiceJoined) {
+  async function joinVoiceRoom(voiceChannelId, voiceChannelName) {
+    if (!currentUser || !activeServerId || voiceJoining) {
+      return;
+    }
+
+    const selectedVoiceChannel =
+      voiceChannels.find((channel) => channel.id === voiceChannelId) ||
+      voiceChannels[0] ||
+      DEFAULT_VOICE_CHANNELS[0];
+
+    if (voiceJoined && activeVoiceChannelId === selectedVoiceChannel.id) {
       return;
     }
 
@@ -983,7 +1223,13 @@ function App() {
       return;
     }
 
-    const roomId = getVoiceRoomId(activeServerId);
+    if (voiceJoined) {
+      await leaveVoiceRoom(true);
+    }
+
+    const nextVoiceChannelId = selectedVoiceChannel.id;
+    const nextVoiceChannelName = voiceChannelName || selectedVoiceChannel.name;
+    const roomId = getVoiceRoomId(activeServerId, nextVoiceChannelId);
 
     try {
       setVoiceJoining(true);
@@ -1005,13 +1251,14 @@ function App() {
 
       localStreamRef.current = localStream;
       voiceRoomIdRef.current = roomId;
+      voiceChannelIdRef.current = nextVoiceChannelId;
 
       await setDoc(
         doc(db, "voiceRooms", roomId),
         {
           serverId: activeServerId,
-          channelId: "main_voice",
-          name: "Sesli Sohbet",
+          channelId: nextVoiceChannelId,
+          name: nextVoiceChannelName,
           updatedAt: serverTimestamp(),
         },
         { merge: true }
@@ -1033,6 +1280,8 @@ function App() {
         participantRef,
         {
           serverId: activeServerId,
+          channelId: nextVoiceChannelId,
+          voiceChannelName: nextVoiceChannelName,
           uid: currentUser.uid,
           email: currentUser.email,
           displayName: username.trim() || "Guest",
@@ -1046,8 +1295,9 @@ function App() {
       setupVoiceSignalListener(roomId);
 
       voiceJoinedRef.current = true;
+      setActiveVoiceChannelId(nextVoiceChannelId);
       setVoiceJoined(true);
-      setVoiceStatus("Ses odasına katıldın.");
+      setVoiceStatus(`${nextVoiceChannelName} ses kanalına katıldın.`);
     } catch (error) {
       console.error("Ses odasına katılınamadı:", error);
       setVoiceError(
@@ -1210,6 +1460,20 @@ function App() {
   }, [servers, activeServerId]);
 
   useEffect(() => {
+    if (!activeServer) {
+      return;
+    }
+
+    const activeChannelExists = textChannels.some((channel) => {
+      return channel.id === activeChannel;
+    });
+
+    if (!activeChannelExists) {
+      setActiveChannel(textChannels[0]?.id || "general");
+    }
+  }, [activeServer, textChannels, activeChannel]);
+
+  useEffect(() => {
     if (!currentUser || !activeServer) {
       return;
     }
@@ -1316,40 +1580,58 @@ function App() {
       return;
     }
 
-    const roomId = getVoiceRoomId(activeServerId);
-    const participantsRef = collection(
-      db,
-      "voiceRooms",
-      roomId,
-      "participants"
-    );
+    const participantsByChannel = new Map();
 
-    const unsubscribe = onSnapshot(
-      participantsRef,
-      (snapshot) => {
-        const firebaseVoiceParticipants = snapshot.docs.map((participantDoc) => {
-          return {
-            id: participantDoc.id,
-            ...participantDoc.data(),
-          };
-        });
+    function rebuildVoiceParticipants() {
+      const nextParticipants = Array.from(participantsByChannel.values()).flat();
 
-        firebaseVoiceParticipants.sort((a, b) => {
-          const aName = a.displayName || a.email || "";
-          const bName = b.displayName || b.email || "";
-          return aName.localeCompare(bName);
-        });
+      nextParticipants.sort((a, b) => {
+        const aName = a.displayName || a.email || "";
+        const bName = b.displayName || b.email || "";
+        return aName.localeCompare(bName);
+      });
 
-        setVoiceParticipants(firebaseVoiceParticipants);
-      },
-      (error) => {
-        console.error("Ses katılımcıları okunamadı:", error);
-        setVoiceError(`Ses katılımcıları okunamadı: ${error.message}`);
-      }
-    );
+      setVoiceParticipants(nextParticipants);
+    }
 
-    return () => unsubscribe();
-  }, [currentUser, activeServerId]);
+    const unsubscribers = voiceChannels.map((voiceChannel) => {
+      const roomId = getVoiceRoomId(activeServerId, voiceChannel.id);
+      const participantsRef = collection(
+        db,
+        "voiceRooms",
+        roomId,
+        "participants"
+      );
+
+      return onSnapshot(
+        participantsRef,
+        (snapshot) => {
+          const channelParticipants = snapshot.docs.map((participantDoc) => {
+            const data = participantDoc.data();
+
+            return {
+              id: `${voiceChannel.id}_${participantDoc.id}`,
+              ...data,
+              serverId: data.serverId || activeServerId,
+              channelId: data.channelId || voiceChannel.id,
+              voiceChannelName: data.voiceChannelName || voiceChannel.name,
+            };
+          });
+
+          participantsByChannel.set(voiceChannel.id, channelParticipants);
+          rebuildVoiceParticipants();
+        },
+        (error) => {
+          console.error("Ses katılımcıları okunamadı:", error);
+          setVoiceError(`Ses katılımcıları okunamadı: ${error.message}`);
+        }
+      );
+    });
+
+    return () => {
+      unsubscribers.forEach((unsubscribe) => unsubscribe());
+    };
+  }, [currentUser, activeServerId, voiceChannelsKey]);
 
   useEffect(() => {
     if (!voiceJoined || !currentUser || !activeServerId || !localStreamRef.current) {
@@ -1357,7 +1639,7 @@ function App() {
     }
 
     const participantUids = new Set(
-      activeVoiceParticipants.map((participant) => participant.uid)
+      currentVoiceParticipants.map((participant) => participant.uid)
     );
 
     peerConnectionsRef.current.forEach((_, uid) => {
@@ -1366,7 +1648,7 @@ function App() {
       }
     });
 
-    activeVoiceParticipants.forEach((participant) => {
+    currentVoiceParticipants.forEach((participant) => {
       if (participant.uid === currentUser.uid) {
         return;
       }
@@ -1384,7 +1666,7 @@ function App() {
         });
       }
     });
-  }, [voiceJoined, activeVoiceParticipants, currentUser, activeServerId]);
+  }, [voiceJoined, currentVoiceParticipants, currentUser, activeServerId]);
 
   useEffect(() => {
     if (!voiceJoined || !currentUser || !localStreamRef.current) {
@@ -1437,17 +1719,26 @@ function App() {
       return;
     }
 
-    if (!currentUser || !activeServerId) {
+    if (!currentUser || !activeServerId || !voiceChannelIdRef.current) {
       leaveVoiceRoom();
       return;
     }
 
-    const currentRoomId = getVoiceRoomId(activeServerId);
+    const voiceChannelStillExists = voiceChannels.some((channel) => {
+      return channel.id === voiceChannelIdRef.current;
+    });
+
+    if (!voiceChannelStillExists) {
+      leaveVoiceRoom();
+      return;
+    }
+
+    const currentRoomId = getVoiceRoomId(activeServerId, voiceChannelIdRef.current);
 
     if (voiceRoomIdRef.current && voiceRoomIdRef.current !== currentRoomId) {
       leaveVoiceRoom();
     }
-  }, [currentUser, activeServerId]);
+  }, [currentUser, activeServerId, voiceChannelsKey]);
 
   useEffect(() => {
     return () => {
@@ -1586,120 +1877,197 @@ function App() {
 
         {activeServer ? (
           <>
-            <div className="channelSectionTitle">Kanallar</div>
+            <div className="channelSectionHeader">
+              <div className="channelSectionTitle">Metin Kanalları</div>
+
+              {isActiveServerOwner && (
+                <button
+                  className="channelAddButton"
+                  onClick={() => addChannel("text")}
+                  disabled={channelActionLoading}
+                  title="Metin kanalı ekle"
+                >
+                  +
+                </button>
+              )}
+            </div>
 
             <div className="channels">
-              {channels.map((channel) => (
-                <button
-                  key={channel.id}
-                  className={
-                    activeChannel === channel.id
-                      ? "channelButton active"
-                      : "channelButton"
-                  }
-                  onClick={() => setActiveChannel(channel.id)}
-                >
-                  <span>#</span>
-                  {channel.name}
-                </button>
+              {textChannels.map((channel) => (
+                <div className="channelRow" key={channel.id}>
+                  <button
+                    className={
+                      activeChannel === channel.id
+                        ? "channelButton active"
+                        : "channelButton"
+                    }
+                    onClick={() => setActiveChannel(channel.id)}
+                  >
+                    <span>#</span>
+                    {channel.name}
+                  </button>
+
+                  {isActiveServerOwner && textChannels.length > 1 && (
+                    <button
+                      className="channelDeleteButton"
+                      onClick={() => deleteChannel("text", channel.id)}
+                      disabled={channelActionLoading}
+                      title="Metin kanalını sil"
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
               ))}
             </div>
 
-            <div className="channelSectionTitle">Ses</div>
+            <div className="channelSectionHeader">
+              <div className="channelSectionTitle">Ses Kanalları</div>
 
-            <div className={voiceJoined ? "voiceBox active" : "voiceBox"}>
-              <div className="voiceChannelTitle">
-                <span>🔊</span>
-                <div>
-                  <strong>Sesli Sohbet</strong>
-                  <small>{activeVoiceParticipants.length} kişi bağlı</small>
-                </div>
-              </div>
+              {isActiveServerOwner && (
+                <button
+                  className="channelAddButton"
+                  onClick={() => addChannel("voice")}
+                  disabled={channelActionLoading}
+                  title="Ses kanalı ekle"
+                >
+                  +
+                </button>
+              )}
+            </div>
 
-              <div className="voiceParticipantList">
-                {activeVoiceParticipants.length === 0 && (
-                  <div className="voiceParticipantEmpty">Şu an seste kimse yok.</div>
-                )}
+            <div className="voiceChannelList">
+              {voiceChannels.map((voiceChannel) => {
+                const channelParticipants = getVoiceParticipantsForChannel(
+                  voiceChannel.id
+                );
+                const isCurrentVoiceChannel =
+                  voiceJoined && activeVoiceChannelId === voiceChannel.id;
 
-                {activeVoiceParticipants.map((participant) => {
-                  const isCurrentUser = participant.uid === currentUser.uid;
-                  const isSpeaking =
-                    speakingUsers[participant.uid] && !participant.muted;
-                  const participantStatus = participant.muted
-                    ? "Mikrofon kapalı"
-                    : isSpeaking
-                      ? "Konuşuyor"
-                      : "Sessiz";
-
-                  return (
-                    <div
-                      className={
-                        isSpeaking
-                          ? "voiceParticipantItem speaking"
-                          : "voiceParticipantItem"
-                      }
-                      key={participant.uid}
-                    >
-                      <div
-                        className={
-                          isSpeaking
-                            ? "voiceParticipantAvatar speaking"
-                            : "voiceParticipantAvatar"
-                        }
-                      >
-                        {getUserInitial(participant.displayName)}
-                      </div>
-
-                      <div className="voiceParticipantInfo">
-                        <strong>
-                          {participant.displayName || "Guest"}
-                          {isCurrentUser ? " (sen)" : ""}
-                        </strong>
-                        <span>{participantStatus}</span>
-                      </div>
-
-                      <span className="voiceParticipantIcon">
-                        {participant.muted ? "🔇" : isSpeaking ? "🟢" : "🎙️"}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-
-              <div className="voiceActions">
-                {!voiceJoined ? (
-                  <button
-                    className="voiceJoinButton"
-                    onClick={joinVoiceRoom}
-                    disabled={voiceJoining}
+                return (
+                  <div
+                    className={isCurrentVoiceChannel ? "voiceBox active" : "voiceBox"}
+                    key={voiceChannel.id}
                   >
-                    {voiceJoining ? "Katılınıyor..." : "Sese Katıl"}
-                  </button>
-                ) : (
-                  <>
-                    <button className="voiceMuteButton" onClick={toggleVoiceMute}>
-                      {voiceMuted ? "Mikrofonu Aç" : "Mikrofonu Kapat"}
-                    </button>
+                    <div className="voiceChannelTitle">
+                      <span>🔊</span>
+                      <div>
+                        <strong>{voiceChannel.name}</strong>
+                        <small>{channelParticipants.length} kişi bağlı</small>
+                      </div>
 
-                    <button
-                      className="voiceLeaveButton"
-                      onClick={() => leaveVoiceRoom()}
-                    >
-                      Ayrıl
-                    </button>
-                  </>
-                )}
-              </div>
+                      {isActiveServerOwner && voiceChannels.length > 1 && (
+                        <button
+                          className="voiceChannelDeleteButton"
+                          onClick={() => deleteChannel("voice", voiceChannel.id)}
+                          disabled={channelActionLoading}
+                          title="Ses kanalını sil"
+                        >
+                          ×
+                        </button>
+                      )}
+                    </div>
 
-              <p className="voiceStatusText">{voiceStatus}</p>
+                    <div className="voiceParticipantList">
+                      {channelParticipants.length === 0 && (
+                        <div className="voiceParticipantEmpty">
+                          Şu an bu kanalda kimse yok.
+                        </div>
+                      )}
+
+                      {channelParticipants.map((participant) => {
+                        const isCurrentUser = participant.uid === currentUser.uid;
+                        const isSpeaking =
+                          speakingUsers[participant.uid] && !participant.muted;
+                        const participantStatus = participant.muted
+                          ? "Mikrofon kapalı"
+                          : isSpeaking
+                            ? "Konuşuyor"
+                            : "Sessiz";
+
+                        return (
+                          <div
+                            className={
+                              isSpeaking
+                                ? "voiceParticipantItem speaking"
+                                : "voiceParticipantItem"
+                            }
+                            key={participant.uid}
+                          >
+                            <div
+                              className={
+                                isSpeaking
+                                  ? "voiceParticipantAvatar speaking"
+                                  : "voiceParticipantAvatar"
+                              }
+                            >
+                              {getUserInitial(participant.displayName)}
+                            </div>
+
+                            <div className="voiceParticipantInfo">
+                              <strong>
+                                {participant.displayName || "Guest"}
+                                {isCurrentUser ? " (sen)" : ""}
+                              </strong>
+                              <span>{participantStatus}</span>
+                            </div>
+
+                            <span className="voiceParticipantIcon">
+                              {participant.muted ? "🔇" : isSpeaking ? "🟢" : "🎙️"}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    <div className="voiceActions">
+                      {!isCurrentVoiceChannel ? (
+                        <button
+                          className="voiceJoinButton"
+                          onClick={() => joinVoiceRoom(voiceChannel.id, voiceChannel.name)}
+                          disabled={voiceJoining}
+                        >
+                          {voiceJoining
+                            ? "Katılınıyor..."
+                            : voiceJoined
+                              ? "Buraya Geç"
+                              : "Sese Katıl"}
+                        </button>
+                      ) : (
+                        <>
+                          <button
+                            className="voiceMuteButton"
+                            onClick={toggleVoiceMute}
+                          >
+                            {voiceMuted ? "Mikrofonu Aç" : "Mikrofonu Kapat"}
+                          </button>
+
+                          <button
+                            className="voiceLeaveButton"
+                            onClick={() => leaveVoiceRoom()}
+                          >
+                            Ayrıl
+                          </button>
+                        </>
+                      )}
+                    </div>
+
+                    {isCurrentVoiceChannel && (
+                      <>
+                        <p className="voiceStatusText">{voiceStatus}</p>
+
+                        {voiceJoined && remoteStreams.length > 0 && (
+                          <div className="voiceRemoteCount">
+                            {remoteStreams.length} uzak ses bağlantısı aktif.
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                );
+              })}
 
               {voiceError && <div className="voiceErrorText">{voiceError}</div>}
-
-              {voiceJoined && remoteStreams.length > 0 && (
-                <div className="voiceRemoteCount">
-                  {remoteStreams.length} uzak ses bağlantısı aktif.
-                </div>
-              )}
             </div>
           </>
         ) : (
