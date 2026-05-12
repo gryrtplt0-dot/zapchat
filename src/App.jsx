@@ -76,6 +76,7 @@ function App() {
   const [voiceStatus, setVoiceStatus] = useState("Sese katılmadın.");
   const [voiceError, setVoiceError] = useState("");
   const [remoteStreams, setRemoteStreams] = useState([]);
+  const [speakingUsers, setSpeakingUsers] = useState({});
 
   const messagesEndRef = useRef(null);
   const localStreamRef = useRef(null);
@@ -86,6 +87,7 @@ function App() {
   const voiceRoomIdRef = useRef(null);
   const voiceJoinedRef = useRef(false);
   const voiceMutedRef = useRef(false);
+  const audioMonitorsRef = useRef(new Map());
 
   const channels = [
     { id: "general", name: "genel" },
@@ -126,6 +128,130 @@ function App() {
 
   function getUserInitial(displayName) {
     return (displayName || "G").charAt(0).toUpperCase();
+  }
+
+  function setUserSpeaking(uid, isSpeaking) {
+    setSpeakingUsers((previousSpeakingUsers) => {
+      if (previousSpeakingUsers[uid] === isSpeaking) {
+        return previousSpeakingUsers;
+      }
+
+      return {
+        ...previousSpeakingUsers,
+        [uid]: isSpeaking,
+      };
+    });
+  }
+
+  function stopAudioLevelMonitor(uid) {
+    const monitor = audioMonitorsRef.current.get(uid);
+
+    if (!monitor) {
+      return;
+    }
+
+    cancelAnimationFrame(monitor.animationFrameId);
+
+    try {
+      monitor.source.disconnect();
+    } catch (error) {
+      console.warn("Ses analiz kaynağı kapatılamadı:", error);
+    }
+
+    if (monitor.audioContext.state !== "closed") {
+      monitor.audioContext.close().catch((error) => {
+        console.warn("Ses analiz context'i kapatılamadı:", error);
+      });
+    }
+
+    audioMonitorsRef.current.delete(uid);
+    setUserSpeaking(uid, false);
+  }
+
+  function startAudioLevelMonitor(uid, stream) {
+    if (!uid || !stream) {
+      return;
+    }
+
+    const AudioContextConstructor =
+      window.AudioContext || window.webkitAudioContext;
+
+    if (!AudioContextConstructor) {
+      return;
+    }
+
+    stopAudioLevelMonitor(uid);
+
+    try {
+      const audioContext = new AudioContextConstructor();
+      const analyser = audioContext.createAnalyser();
+      const source = audioContext.createMediaStreamSource(stream);
+
+      analyser.fftSize = 512;
+      analyser.smoothingTimeConstant = 0.65;
+
+      const dataArray = new Uint8Array(analyser.fftSize);
+
+      source.connect(analyser);
+
+      const monitor = {
+        audioContext,
+        analyser,
+        source,
+        dataArray,
+        animationFrameId: null,
+        lastSpeaking: false,
+        lastUpdateTime: 0,
+      };
+
+      audioMonitorsRef.current.set(uid, monitor);
+
+      if (audioContext.state === "suspended") {
+        audioContext.resume().catch((error) => {
+          console.warn("Ses analiz context'i başlatılamadı:", error);
+        });
+      }
+
+      function checkAudioLevel() {
+        const currentMonitor = audioMonitorsRef.current.get(uid);
+
+        if (!currentMonitor) {
+          return;
+        }
+
+        analyser.getByteTimeDomainData(dataArray);
+
+        let sum = 0;
+
+        for (const value of dataArray) {
+          const centeredValue = value - 128;
+          sum += centeredValue * centeredValue;
+        }
+
+        const rms = Math.sqrt(sum / dataArray.length);
+        const hasLiveAudioTrack = stream.getAudioTracks().some((track) => {
+          return track.readyState === "live" && track.enabled;
+        });
+        const nextSpeaking = hasLiveAudioTrack && rms > 8;
+        const now = Date.now();
+        const shouldUpdate =
+          nextSpeaking !== currentMonitor.lastSpeaking ||
+          now - currentMonitor.lastUpdateTime > 350;
+
+        if (shouldUpdate) {
+          currentMonitor.lastSpeaking = nextSpeaking;
+          currentMonitor.lastUpdateTime = now;
+          setUserSpeaking(uid, nextSpeaking);
+        }
+
+        currentMonitor.animationFrameId = requestAnimationFrame(checkAudioLevel);
+      }
+
+      monitor.animationFrameId = requestAnimationFrame(checkAudioLevel);
+    } catch (error) {
+      console.warn("Ses seviyesi ölçülemedi:", error);
+      stopAudioLevelMonitor(uid);
+    }
   }
 
   function getMemberDocumentId(serverId, uid) {
@@ -589,6 +715,8 @@ function App() {
   }
 
   function removeRemoteStream(uid) {
+    stopAudioLevelMonitor(uid);
+
     setRemoteStreams((previousStreams) =>
       previousStreams.filter((remoteStream) => remoteStream.uid !== uid)
     );
@@ -820,6 +948,9 @@ function App() {
 
     peerConnectionsRef.current.clear();
     pendingIceCandidatesRef.current.clear();
+    Array.from(audioMonitorsRef.current.keys()).forEach((uid) => {
+      stopAudioLevelMonitor(uid);
+    });
     stopLocalVoiceStream();
 
     participantDocRef.current = null;
@@ -829,6 +960,7 @@ function App() {
       setVoiceJoined(false);
       setVoiceJoining(false);
       setRemoteStreams([]);
+      setSpeakingUsers({});
       setVoiceStatus("Sese katılmadın.");
     }
 
@@ -1255,6 +1387,34 @@ function App() {
   }, [voiceJoined, activeVoiceParticipants, currentUser, activeServerId]);
 
   useEffect(() => {
+    if (!voiceJoined || !currentUser || !localStreamRef.current) {
+      return;
+    }
+
+    startAudioLevelMonitor(currentUser.uid, localStreamRef.current);
+
+    return () => {
+      stopAudioLevelMonitor(currentUser.uid);
+    };
+  }, [voiceJoined, currentUser?.uid]);
+
+  useEffect(() => {
+    if (!voiceJoined) {
+      return;
+    }
+
+    remoteStreams.forEach((remoteStream) => {
+      startAudioLevelMonitor(remoteStream.uid, remoteStream.stream);
+    });
+
+    return () => {
+      remoteStreams.forEach((remoteStream) => {
+        stopAudioLevelMonitor(remoteStream.uid);
+      });
+    };
+  }, [voiceJoined, remoteStreams]);
+
+  useEffect(() => {
     if (!voiceJoined || !participantDocRef.current) {
       return;
     }
@@ -1456,6 +1616,56 @@ function App() {
                 </div>
               </div>
 
+              <div className="voiceParticipantList">
+                {activeVoiceParticipants.length === 0 && (
+                  <div className="voiceParticipantEmpty">Şu an seste kimse yok.</div>
+                )}
+
+                {activeVoiceParticipants.map((participant) => {
+                  const isCurrentUser = participant.uid === currentUser.uid;
+                  const isSpeaking =
+                    speakingUsers[participant.uid] && !participant.muted;
+                  const participantStatus = participant.muted
+                    ? "Mikrofon kapalı"
+                    : isSpeaking
+                      ? "Konuşuyor"
+                      : "Sessiz";
+
+                  return (
+                    <div
+                      className={
+                        isSpeaking
+                          ? "voiceParticipantItem speaking"
+                          : "voiceParticipantItem"
+                      }
+                      key={participant.uid}
+                    >
+                      <div
+                        className={
+                          isSpeaking
+                            ? "voiceParticipantAvatar speaking"
+                            : "voiceParticipantAvatar"
+                        }
+                      >
+                        {getUserInitial(participant.displayName)}
+                      </div>
+
+                      <div className="voiceParticipantInfo">
+                        <strong>
+                          {participant.displayName || "Guest"}
+                          {isCurrentUser ? " (sen)" : ""}
+                        </strong>
+                        <span>{participantStatus}</span>
+                      </div>
+
+                      <span className="voiceParticipantIcon">
+                        {participant.muted ? "🔇" : isSpeaking ? "🟢" : "🎙️"}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+
               <div className="voiceActions">
                 {!voiceJoined ? (
                   <button
@@ -1617,32 +1827,6 @@ function App() {
                 </div>
               </div>
             ))}
-          </div>
-
-          <div className="voiceMemberPanel">
-            <div className="memberHeader voiceMemberHeader">
-              <h3>Seste</h3>
-              <span>{activeVoiceParticipants.length}</span>
-            </div>
-
-            <div className="voiceMemberList">
-              {activeVoiceParticipants.length === 0 && (
-                <div className="memberEmpty">Şu an seste kimse yok.</div>
-              )}
-
-              {activeVoiceParticipants.map((participant) => (
-                <div className="voiceMemberItem" key={participant.uid}>
-                  <div className="memberAvatar">
-                    {getUserInitial(participant.displayName)}
-                  </div>
-
-                  <div className="memberInfo">
-                    <strong>{participant.displayName || "Guest"}</strong>
-                    <span>{participant.muted ? "Mikrofon kapalı" : "Konuşabilir"}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
           </div>
         </aside>
       )}

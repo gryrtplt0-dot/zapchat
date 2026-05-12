@@ -65,6 +65,7 @@ input {
   padding: 18px;
   display: flex;
   flex-direction: column;
+  overflow-y: auto;
 }
 
 .appTitle {
@@ -911,29 +912,93 @@ input {
   font-weight: 700;
 }
 
-.voiceMemberPanel {
-  margin-top: 22px;
-}
-
-.voiceMemberHeader {
-  margin-top: 0;
-}
-
-.voiceMemberList {
-  margin-top: 14px;
+.voiceParticipantList {
+  margin-top: 12px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
-.voiceMemberItem {
+.voiceParticipantEmpty {
+  color: #8f96a3;
+  border: 1px dashed #303644;
+  padding: 10px;
+  border-radius: 10px;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.voiceParticipantItem {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 9px;
+  gap: 9px;
+  min-width: 0;
+  padding: 8px;
   border-radius: 12px;
-  background: rgba(255, 176, 32, 0.08);
-  border: 1px solid rgba(255, 176, 32, 0.24);
+  background: rgba(16, 19, 26, 0.88);
+  border: 1px solid #252a35;
+  transition: border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
+}
+
+.voiceParticipantItem.speaking {
+  border-color: rgba(69, 219, 137, 0.62);
+  background: rgba(69, 219, 137, 0.1);
+  box-shadow: 0 0 0 1px rgba(69, 219, 137, 0.12);
+}
+
+.voiceParticipantAvatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: #ffb020;
+  color: #111318;
+  display: grid;
+  place-items: center;
+  font-weight: 900;
+  font-size: 13px;
+  flex-shrink: 0;
+  transition: box-shadow 0.18s ease, transform 0.18s ease;
+}
+
+.voiceParticipantAvatar.speaking {
+  box-shadow:
+    0 0 0 3px rgba(69, 219, 137, 0.36),
+    0 0 18px rgba(69, 219, 137, 0.46);
+  transform: scale(1.04);
+}
+
+.voiceParticipantInfo {
+  min-width: 0;
+  flex: 1;
+}
+
+.voiceParticipantInfo strong {
+  display: block;
+  color: #ffffff;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.voiceParticipantInfo span {
+  display: block;
+  color: #8f96a3;
+  font-size: 11px;
+  margin-top: 2px;
+}
+
+.voiceParticipantItem.speaking .voiceParticipantInfo span {
+  color: #9df0c6;
+}
+
+.voiceParticipantIcon {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  flex-shrink: 0;
 }
 
 .remoteAudioMount {
