@@ -397,6 +397,20 @@ input {
   background: rgba(255, 107, 107, 0.24);
 }
 
+.screenPointerControlButton {
+  background: rgba(69, 219, 137, 0.14);
+  color: #9df0c6;
+}
+
+.screenPointerControlButton:hover {
+  background: rgba(69, 219, 137, 0.22);
+}
+
+.screenPointerControlButton:not(.active) {
+  background: rgba(255, 176, 32, 0.12);
+  color: #ffcf7a;
+}
+
 .screenShareCollapsedInfo {
   color: #aeb5c2;
   background: rgba(255, 176, 32, 0.07);
@@ -478,6 +492,16 @@ input {
   overflow: hidden;
 }
 
+.screenShareViewer.pointerDisabled,
+.screenFullscreenViewer.pointerDisabled {
+  cursor: not-allowed;
+}
+
+.screenShareViewer.pointerDisabled .screenShareVideo,
+.screenFullscreenViewer.pointerDisabled .screenShareVideo {
+  opacity: 0.82;
+}
+
 .screenShareVideo {
   display: block;
   width: 100%;
@@ -485,6 +509,31 @@ input {
   aspect-ratio: 16 / 9;
   object-fit: contain;
   background: #050609;
+}
+
+.screenPointerDisabledBadge {
+  position: absolute;
+  left: 50%;
+  bottom: 14px;
+  transform: translateX(-50%);
+  z-index: 5;
+  max-width: calc(100% - 28px);
+  color: #ffcf7a;
+  background: rgba(17, 19, 24, 0.88);
+  border: 1px solid rgba(255, 176, 32, 0.34);
+  border-radius: 999px;
+  padding: 8px 11px;
+  font-size: 12px;
+  font-weight: 900;
+  text-align: center;
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.38);
+  pointer-events: none;
+}
+
+.screenPointerDisabledBadge.fullscreen {
+  bottom: 24px;
+  font-size: 14px;
+  padding: 10px 14px;
 }
 
 .screenPointerLayer {
@@ -1364,6 +1413,24 @@ input {
   background: rgba(255, 107, 107, 0.24);
 }
 
+.screenPointerToggleButton {
+  background: rgba(255, 176, 32, 0.12);
+  color: #ffcf7a;
+}
+
+.screenPointerToggleButton:hover {
+  background: rgba(255, 176, 32, 0.2);
+}
+
+.screenPointerToggleButton.active {
+  background: rgba(69, 219, 137, 0.14);
+  color: #9df0c6;
+}
+
+.screenPointerToggleButton.active:hover {
+  background: rgba(69, 219, 137, 0.22);
+}
+
 .voiceLeaveButton {
   grid-column: 1 / -1;
   background: rgba(255, 107, 107, 0.16);
@@ -1490,6 +1557,37 @@ input {
   place-items: center;
   font-size: 13px;
   flex-shrink: 0;
+}
+
+.presenterPointerToast {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  z-index: 140;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: min(520px, calc(100vw - 32px));
+  color: #ffcf7a;
+  background: rgba(17, 19, 24, 0.94);
+  border: 1px solid rgba(255, 176, 32, 0.36);
+  border-radius: 999px;
+  padding: 10px 14px;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.48);
+  pointer-events: none;
+}
+
+.presenterPointerToast strong {
+  color: #ffffff;
+}
+
+.presenterPointerToast span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 800;
 }
 
 .remoteAudioMount {
