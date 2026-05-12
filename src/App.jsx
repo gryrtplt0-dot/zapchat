@@ -119,23 +119,205 @@ function RemoteAudio({ stream }) {
   return <audio ref={audioRef} autoPlay playsInline />;
 }
 
-function ScreenShareVideo({ stream, muted = false }) {
-  const videoRef = useRef(null);
+function getVideoContentBox(viewerElement, videoElement) {
+  if (!viewerElement || !videoElement) {
+    return null;
+  }
+
+  const viewerRect = viewerElement.getBoundingClientRect();
+  const videoRect = videoElement.getBoundingClientRect();
+
+  if (videoRect.width <= 0 || videoRect.height <= 0) {
+    return null;
+  }
+
+  const videoWidth = videoElement.videoWidth || 16;
+  const videoHeight = videoElement.videoHeight || 9;
+  const videoAspect = videoWidth / videoHeight;
+  const boxAspect = videoRect.width / videoRect.height;
+
+  let width = videoRect.width;
+  let height = videoRect.height;
+  let left = videoRect.left - viewerRect.left;
+  let top = videoRect.top - viewerRect.top;
+
+  if (boxAspect > videoAspect) {
+    width = videoRect.height * videoAspect;
+    left += (videoRect.width - width) / 2;
+  } else if (boxAspect < videoAspect) {
+    height = videoRect.width / videoAspect;
+    top += (videoRect.height - height) / 2;
+  }
+
+  return { left, top, width, height };
+}
+
+function ScreenShareVideo({ stream, muted = false, videoRef, onVideoReady }) {
+  const fallbackVideoRef = useRef(null);
+  const activeVideoRef = videoRef || fallbackVideoRef;
 
   useEffect(() => {
-    if (videoRef.current && stream) {
-      videoRef.current.srcObject = stream;
+    if (activeVideoRef.current && stream) {
+      activeVideoRef.current.srcObject = stream;
     }
-  }, [stream]);
+  }, [activeVideoRef, stream]);
 
   return (
     <video
       className="screenShareVideo"
-      ref={videoRef}
+      ref={activeVideoRef}
       autoPlay
       playsInline
       muted={muted}
+      onLoadedData={onVideoReady}
+      onLoadedMetadata={onVideoReady}
     />
+  );
+}
+
+function ScreenShareViewerBox({
+  screenShare,
+  pointers,
+  muted,
+  fullscreen = false,
+  onPointer,
+  onPointerOutsideVideo,
+}) {
+  const viewerRef = useRef(null);
+  const videoRef = useRef(null);
+  const [contentBox, setContentBox] = useState(null);
+
+  function updateContentBox() {
+    const nextContentBox = getVideoContentBox(viewerRef.current, videoRef.current);
+    setContentBox(nextContentBox);
+  }
+
+  useEffect(() => {
+    updateContentBox();
+
+    const viewerElement = viewerRef.current;
+    const videoElement = videoRef.current;
+
+    let resizeObserver = null;
+
+    if (typeof ResizeObserver !== "undefined") {
+      resizeObserver = new ResizeObserver(updateContentBox);
+
+      if (viewerElement) {
+        resizeObserver.observe(viewerElement);
+      }
+
+      if (videoElement) {
+        resizeObserver.observe(videoElement);
+      }
+    }
+
+    window.addEventListener("resize", updateContentBox);
+
+    const intervalId = window.setInterval(updateContentBox, 750);
+
+    return () => {
+      window.removeEventListener("resize", updateContentBox);
+      window.clearInterval(intervalId);
+      resizeObserver?.disconnect();
+    };
+  }, [screenShare.stream, fullscreen]);
+
+  function handlePointerClick(event) {
+    if (screenShare.screenPointerEnabled === false) {
+      onPointer(screenShare, null);
+      return;
+    }
+
+    const nextContentBox = getVideoContentBox(viewerRef.current, videoRef.current);
+    setContentBox(nextContentBox);
+
+    if (!nextContentBox || nextContentBox.width <= 0 || nextContentBox.height <= 0) {
+      onPointerOutsideVideo?.();
+      return;
+    }
+
+    const viewerRect = viewerRef.current.getBoundingClientRect();
+    const clickX = event.clientX - viewerRect.left - nextContentBox.left;
+    const clickY = event.clientY - viewerRect.top - nextContentBox.top;
+
+    if (
+      clickX < 0 ||
+      clickY < 0 ||
+      clickX > nextContentBox.width ||
+      clickY > nextContentBox.height
+    ) {
+      onPointerOutsideVideo?.();
+      return;
+    }
+
+    onPointer(screenShare, {
+      xPercent: (clickX / nextContentBox.width) * 100,
+      yPercent: (clickY / nextContentBox.height) * 100,
+    });
+  }
+
+  return (
+    <div
+      className={
+        screenShare.screenPointerEnabled
+          ? fullscreen
+            ? "screenFullscreenViewer"
+            : "screenShareViewer"
+          : fullscreen
+            ? "screenFullscreenViewer pointerDisabled"
+            : "screenShareViewer pointerDisabled"
+      }
+      ref={viewerRef}
+      onClick={handlePointerClick}
+      title={
+        screenShare.screenPointerEnabled
+          ? "Yalnızca paylaşılan ekran görüntüsünün üzerine işaret bırakabilirsin"
+          : "Paylaşan kişi ekran işaretlemeyi kapattı"
+      }
+    >
+      <ScreenShareVideo
+        stream={screenShare.stream}
+        muted={muted}
+        videoRef={videoRef}
+        onVideoReady={updateContentBox}
+      />
+
+      {contentBox && (
+        <div
+          className="screenPointerLayer screenPointerLayerContent"
+          style={{
+            left: `${contentBox.left}px`,
+            top: `${contentBox.top}px`,
+            width: `${contentBox.width}px`,
+            height: `${contentBox.height}px`,
+          }}
+          aria-hidden="true"
+        >
+          {pointers.map((pointer) => (
+            <div
+              className={fullscreen ? "screenPointerMarker fullscreen" : "screenPointerMarker"}
+              key={pointer.id}
+              style={{
+                left: `${pointer.xPercent}%`,
+                top: `${pointer.yPercent}%`,
+              }}
+            >
+              <span className="screenPointerDot" />
+              <span className="screenPointerLabel">
+                {pointer.markerName || "Guest"}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!screenShare.screenPointerEnabled && (
+        <div className={fullscreen ? "screenPointerDisabledBadge fullscreen" : "screenPointerDisabledBadge"}>
+          İşaretleme paylaşan kişi tarafından kapalı
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -1181,7 +1363,7 @@ function App() {
     });
   }
 
-  async function addScreenPointer(screenShare, event) {
+  async function addScreenPointer(screenShare, point) {
     if (!voiceJoined || !currentUser || !screenShare?.uid) {
       return;
     }
@@ -1193,17 +1375,18 @@ function App() {
       return;
     }
 
+    if (!point) {
+      return;
+    }
+
     const roomId = voiceRoomIdRef.current;
 
     if (!roomId) {
       return;
     }
 
-    const bounds = event.currentTarget.getBoundingClientRect();
-    const xPercent = ((event.clientX - bounds.left) / bounds.width) * 100;
-    const yPercent = ((event.clientY - bounds.top) / bounds.height) * 100;
-    const safeXPercent = Math.min(100, Math.max(0, xPercent));
-    const safeYPercent = Math.min(100, Math.max(0, yPercent));
+    const safeXPercent = Math.min(100, Math.max(0, point.xPercent));
+    const safeYPercent = Math.min(100, Math.max(0, point.yPercent));
     const pointerLifetimeMs = 8500;
     const pointerCreatedAtMs = new Date().getTime();
 
@@ -1226,6 +1409,8 @@ function App() {
         }
       );
 
+      setVoiceError("");
+
       window.setTimeout(() => {
         deleteDoc(pointerRef).catch((error) => {
           console.warn("Ekran işareti temizlenemedi:", error);
@@ -1235,6 +1420,10 @@ function App() {
       console.error("Ekran işareti gönderilemedi:", error);
       setVoiceError("Ekran üzerinde işaret gönderilemedi.");
     }
+  }
+
+  function showPointerOutsideVideoWarning() {
+    setVoiceError("İşaret sadece paylaşılan ekran görüntüsünün üzerine bırakılabilir.");
   }
 
   function openScreenShareFullscreen(screenShareUid) {
@@ -2971,48 +3160,13 @@ function App() {
                     </div>
 
                     {screenShare.stream ? (
-                      <div
-                        className={
-                          screenShare.screenPointerEnabled
-                            ? "screenShareViewer"
-                            : "screenShareViewer pointerDisabled"
-                        }
-                        onClick={(event) => addScreenPointer(screenShare, event)}
-                        title={
-                          screenShare.screenPointerEnabled
-                            ? "Ekranda bir noktayı işaretlemek için tıkla"
-                            : "Paylaşan kişi ekran işaretlemeyi kapattı"
-                        }
-                      >
-                        <ScreenShareVideo
-                          stream={screenShare.stream}
-                          muted={screenShare.isLocalShare}
-                        />
-
-                        <div className="screenPointerLayer" aria-hidden="true">
-                          {getScreenPointersForShare(screenShare.uid).map((pointer) => (
-                            <div
-                              className="screenPointerMarker"
-                              key={pointer.id}
-                              style={{
-                                left: `${pointer.xPercent}%`,
-                                top: `${pointer.yPercent}%`,
-                              }}
-                            >
-                              <span className="screenPointerDot" />
-                              <span className="screenPointerLabel">
-                                {pointer.markerName || "Guest"}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-
-                        {!screenShare.screenPointerEnabled && (
-                          <div className="screenPointerDisabledBadge">
-                            İşaretleme paylaşan kişi tarafından kapalı
-                          </div>
-                        )}
-                      </div>
+                      <ScreenShareViewerBox
+                        screenShare={screenShare}
+                        pointers={getScreenPointersForShare(screenShare.uid)}
+                        muted={screenShare.isLocalShare}
+                        onPointer={addScreenPointer}
+                        onPointerOutsideVideo={showPointerOutsideVideoWarning}
+                      />
                     ) : (
                       <div className="screenShareLoading">
                         Ekran bağlantısı bekleniyor...
@@ -3150,48 +3304,14 @@ function App() {
             </div>
           </div>
 
-          <div
-            className={
-              fullscreenScreenShare.screenPointerEnabled
-                ? "screenFullscreenViewer"
-                : "screenFullscreenViewer pointerDisabled"
-            }
-            onClick={(event) => addScreenPointer(fullscreenScreenShare, event)}
-            title={
-              fullscreenScreenShare.screenPointerEnabled
-                ? "Ekranda bir noktayı işaretlemek için tıkla"
-                : "Paylaşan kişi ekran işaretlemeyi kapattı"
-            }
-          >
-            <ScreenShareVideo
-              stream={fullscreenScreenShare.stream}
-              muted={fullscreenScreenShare.isLocalShare}
-            />
-
-            <div className="screenPointerLayer" aria-hidden="true">
-              {getScreenPointersForShare(fullscreenScreenShare.uid).map((pointer) => (
-                <div
-                  className="screenPointerMarker fullscreen"
-                  key={pointer.id}
-                  style={{
-                    left: `${pointer.xPercent}%`,
-                    top: `${pointer.yPercent}%`,
-                  }}
-                >
-                  <span className="screenPointerDot" />
-                  <span className="screenPointerLabel">
-                    {pointer.markerName || "Guest"}
-                  </span>
-                </div>
-              ))}
-            </div>
-
-            {!fullscreenScreenShare.screenPointerEnabled && (
-              <div className="screenPointerDisabledBadge fullscreen">
-                İşaretleme paylaşan kişi tarafından kapalı
-              </div>
-            )}
-          </div>
+          <ScreenShareViewerBox
+            screenShare={fullscreenScreenShare}
+            pointers={getScreenPointersForShare(fullscreenScreenShare.uid)}
+            muted={fullscreenScreenShare.isLocalShare}
+            fullscreen
+            onPointer={addScreenPointer}
+            onPointerOutsideVideo={showPointerOutsideVideoWarning}
+          />
         </div>
       )}
 

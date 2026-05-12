@@ -543,6 +543,10 @@ input {
   overflow: hidden;
 }
 
+.screenPointerLayerContent {
+  inset: auto;
+}
+
 .screenPointerMarker {
   position: absolute;
   display: flex;
