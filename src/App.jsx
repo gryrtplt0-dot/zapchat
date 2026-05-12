@@ -3010,12 +3010,36 @@ function App() {
                     key={voiceChannel.id}
                   >
                     <div className="voiceChannelTitle">
-                      <span>🔊</span>
-                      <div className="voiceChannelMeta">
-                        <strong>{voiceChannel.name}</strong>
-                        <small>{channelParticipants.length} kişi bağlı</small>
-                      </div>
-                      <span className="voiceChannelCount">{channelParticipants.length}</span>
+                      <button
+                        className={
+                          isCurrentVoiceChannel
+                            ? "voiceChannelJoinTarget active"
+                            : "voiceChannelJoinTarget"
+                        }
+                        onClick={() => {
+                          if (isCurrentVoiceChannel) {
+                            return;
+                          }
+
+                          joinVoiceRoom(voiceChannel.id, voiceChannel.name);
+                        }}
+                        disabled={voiceJoining && !isCurrentVoiceChannel}
+                        title={
+                          isCurrentVoiceChannel
+                            ? "Şu anda bu ses kanalındasın"
+                            : voiceJoined
+                              ? "Bu ses kanalına geç"
+                              : "Ses kanalına katıl"
+                        }
+                        type="button"
+                      >
+                        <span className="voiceChannelIcon">🔊</span>
+                        <div className="voiceChannelMeta">
+                          <strong>{voiceChannel.name}</strong>
+                          <small>{channelParticipants.length} kişi bağlı</small>
+                        </div>
+                        <span className="voiceChannelCount">{channelParticipants.length}</span>
+                      </button>
 
                       {isActiveServerOwner && (
                         <div className="voiceChannelManageButtons">
@@ -3143,70 +3167,56 @@ function App() {
                       })}
                     </div>
 
-                    <div className="voiceActions">
-                      {!isCurrentVoiceChannel ? (
+                    {isCurrentVoiceChannel && (
+                      <div className="voiceActions">
                         <button
-                          className="voiceJoinButton"
-                          onClick={() => joinVoiceRoom(voiceChannel.id, voiceChannel.name)}
-                          disabled={voiceJoining}
+                          className="voiceMuteButton"
+                          onClick={toggleVoiceMute}
+                          disabled={voiceServerMuted}
+                          title={
+                            voiceServerMuted
+                              ? "Sunucu sahibi mikrofonunu kapattı. Açma izni verilince tekrar açabilirsin."
+                              : "Mikrofonu aç/kapat"
+                          }
                         >
-                          {voiceJoining
-                            ? "Katılınıyor..."
-                            : voiceJoined
-                              ? "Buraya Geç"
-                              : "Sese Katıl"}
+                          {voiceServerMuted
+                            ? "Susturuldun"
+                            : voiceMuted
+                              ? "Mikrofonu Aç"
+                              : "Mikrofonu Kapat"}
                         </button>
-                      ) : (
-                        <>
-                          <button
-                            className="voiceMuteButton"
-                            onClick={toggleVoiceMute}
-                            disabled={voiceServerMuted}
-                            title={
-                              voiceServerMuted
-                                ? "Sunucu sahibi mikrofonunu kapattı. Açma izni verilince tekrar açabilirsin."
-                                : "Mikrofonu aç/kapat"
+
+                        <button
+                          className={
+                            screenSharing
+                              ? "screenShareButton active"
+                              : "screenShareButton"
+                          }
+                          onClick={() => {
+                            if (screenSharing) {
+                              stopScreenShare();
+                              return;
                             }
-                          >
-                            {voiceServerMuted
-                              ? "Susturuldun"
-                              : voiceMuted
-                                ? "Mikrofonu Aç"
-                                : "Mikrofonu Kapat"}
-                          </button>
 
-                          <button
-                            className={
-                              screenSharing
-                                ? "screenShareButton active"
-                                : "screenShareButton"
-                            }
-                            onClick={() => {
-                              if (screenSharing) {
-                                stopScreenShare();
-                                return;
-                              }
+                            startScreenShare();
+                          }}
+                          disabled={screenShareStarting}
+                        >
+                          {screenShareStarting
+                            ? "Başlatılıyor..."
+                            : screenSharing
+                              ? "Paylaşımı Durdur"
+                              : "Ekranı Paylaş"}
+                        </button>
 
-                              startScreenShare();
-                            }}
-                            disabled={screenShareStarting}
-                          >
-                            {screenShareStarting
-                              ? "Başlatılıyor..."
-                              : screenSharing
-                                ? "Paylaşımı Durdur"
-                                : "Ekranı Paylaş"}
-                          </button>
-
-                          <button
-                            className="voiceLeaveButton"
-                            onClick={() => leaveVoiceRoom()}
-                          >
-                            Ayrıl
-                          </button>
-                        </>
-                      )}
-                    </div>
+                        <button
+                          className="voiceLeaveButton"
+                          onClick={() => leaveVoiceRoom()}
+                        >
+                          Ayrıl
+                        </button>
+                      </div>
+                    )}
 
                     {isCurrentVoiceChannel && (
                       <>

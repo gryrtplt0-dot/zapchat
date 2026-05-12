@@ -1343,19 +1343,43 @@ input {
   align-items: center;
 }
 
+.voiceChannelJoinTarget {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  padding: 5px 6px;
+  border-radius: 10px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+}
+
+.voiceChannelJoinTarget:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.voiceChannelJoinTarget.active {
+  cursor: default;
+}
+
+.voiceChannelJoinTarget:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
 .voiceChannelMeta {
   flex: 1;
   min-width: 0;
 }
 
-.voiceChannelTitle > span:first-child {
+.voiceChannelIcon {
   color: #8f96a3;
   font-size: 16px;
   line-height: 1;
-  width: auto;
-  height: auto;
-  background: transparent;
-  border-radius: 0;
   flex-shrink: 0;
 }
 
