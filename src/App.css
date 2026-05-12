@@ -742,10 +742,10 @@ input {
 }
 
 .memberBar {
-  width: 240px;
+  width: 252px;
   background: #171a21;
   border-left: 1px solid #252a35;
-  padding: 18px;
+  padding: 18px 14px 18px 16px;
   overflow-y: auto;
 }
 
@@ -753,7 +753,7 @@ input {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding-bottom: 14px;
+  padding: 0 2px 14px;
   border-bottom: 1px solid #252a35;
 }
 
@@ -776,25 +776,52 @@ input {
   margin-top: 14px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 16px;
+}
+
+.memberGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.memberGroupTitle {
+  color: #9aa3b2;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 0 4px;
+}
+
+.memberGroupItems {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .memberItem {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 9px;
-  border-radius: 12px;
-  background: #10131a;
-  border: 1px solid #252a35;
+  padding: 8px 10px;
+  border-radius: 14px;
+  background: transparent;
+  border: 1px solid transparent;
+  transition: background 0.18s ease, border-color 0.18s ease, opacity 0.18s ease;
+}
+
+.memberItem:hover {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.06);
 }
 
 .memberItem.online {
-  border-color: rgba(69, 219, 137, 0.34);
+  opacity: 1;
 }
 
 .memberItem.offline {
-  opacity: 0.62;
+  opacity: 0.56;
 }
 
 .memberAvatarWrap {
@@ -803,24 +830,30 @@ input {
 }
 
 .memberAvatar {
-  width: 34px;
-  height: 34px;
+  width: 38px;
+  height: 38px;
   border-radius: 50%;
-  background: #ffb020;
+  background: linear-gradient(135deg, #ffcc5c 0%, #ffb020 100%);
   color: #111318;
   display: grid;
   place-items: center;
   font-weight: 900;
+  font-size: 15px;
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.24);
+}
+
+.memberItem.offline .memberAvatar {
+  filter: saturate(0.6);
 }
 
 .memberStatusDot {
   position: absolute;
   right: -1px;
   bottom: -1px;
-  width: 11px;
-  height: 11px;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
-  border: 2px solid #10131a;
+  border: 2px solid #171a21;
 }
 
 .memberStatusDot.online {
@@ -834,6 +867,13 @@ input {
 .memberInfo {
   min-width: 0;
   flex: 1;
+}
+
+.memberNameRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
 }
 
 .memberInfo strong {
@@ -852,12 +892,29 @@ input {
   margin-top: 2px;
 }
 
+.memberOwnerCrown {
+  flex-shrink: 0;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.memberSelfTag {
+  flex-shrink: 0;
+  color: #ffcf7a;
+  background: rgba(255, 176, 32, 0.12);
+  border: 1px solid rgba(255, 176, 32, 0.24);
+  border-radius: 999px;
+  padding: 2px 6px;
+  font-size: 10px;
+  font-weight: 900;
+}
+
 .memberKickButton {
-  border: 1px solid rgba(255, 107, 107, 0.32);
+  border: 1px solid rgba(255, 107, 107, 0.26);
   background: rgba(255, 107, 107, 0.14);
   color: #ffb3b3;
   border-radius: 9px;
-  padding: 6px 8px;
+  padding: 5px 8px;
   font-size: 11px;
   font-weight: 900;
   cursor: pointer;
@@ -880,6 +937,11 @@ input {
   border-radius: 12px;
   font-size: 14px;
   line-height: 1.4;
+}
+
+.memberEmpty.compact {
+  padding: 10px 12px;
+  font-size: 12px;
 }
 
 .deleteButton {

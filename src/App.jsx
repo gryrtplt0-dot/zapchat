@@ -356,9 +356,16 @@ function App() {
       });
   }, [members, presenceTick, currentUser?.uid]);
 
-  const onlineMemberCount = displayedMembers.filter((member) => {
+  const onlineMembers = displayedMembers.filter((member) => {
     return member.isOnline;
-  }).length;
+  });
+
+  const offlineMembers = displayedMembers.filter((member) => {
+    return !member.isOnline;
+  });
+
+  const onlineMemberCount = onlineMembers.length;
+  const offlineMemberCount = offlineMembers.length;
   const activeMemberCount = displayedMembers.length;
 
   const fullscreenScreenShare = useMemo(() => {
@@ -406,6 +413,60 @@ function App() {
 
   function getMemberName(member) {
     return member?.displayName || member?.email || "Guest";
+  }
+
+  function getMemberRoleLabel(member) {
+    return member?.role === "owner" ? "Sunucu sahibi" : "Üye";
+  }
+
+  function renderMemberItem(member) {
+    const isCurrentMember = member.uid === currentUser?.uid;
+    const roleLabel = getMemberRoleLabel(member);
+
+    return (
+      <div
+        className={member.isOnline ? "memberItem online" : "memberItem offline"}
+        key={member.id}
+      >
+        <div className="memberAvatarWrap">
+          <div className="memberAvatar">{getUserInitial(member.displayName)}</div>
+          <span
+            className={
+              member.isOnline
+                ? "memberStatusDot online"
+                : "memberStatusDot offline"
+            }
+            title={member.isOnline ? "Çevrimiçi" : "Çevrimdışı"}
+          />
+        </div>
+
+        <div className="memberInfo">
+          <div className="memberNameRow">
+            <strong>{getMemberName(member)}</strong>
+            {member.role === "owner" && (
+              <span className="memberOwnerCrown" title="Sunucu sahibi">
+                👑
+              </span>
+            )}
+            {isCurrentMember && <span className="memberSelfTag">Sen</span>}
+          </div>
+          <span>{roleLabel}</span>
+        </div>
+
+        {isActiveServerOwner &&
+          member.uid !== currentUser?.uid &&
+          member.role !== "owner" && (
+            <button
+              className="memberKickButton"
+              onClick={() => kickMemberFromServer(member)}
+              disabled={moderationActionLoading}
+              title="Üyeyi sunucudan at"
+            >
+              At
+            </button>
+          )}
+      </div>
+    );
   }
 
   function setLocalMicrophoneEnabled(enabled) {
@@ -3332,51 +3393,31 @@ function App() {
               <div className="memberEmpty">Henüz üye bilgisi yok.</div>
             )}
 
-            {displayedMembers.map((member) => {
-              const roleLabel = member.role === "owner" ? "Sunucu sahibi" : "Üye";
-              const presenceLabel = member.isOnline ? "Çevrimiçi" : "Çevrimdışı";
-
-              return (
-                <div
-                  className={
-                    member.isOnline ? "memberItem online" : "memberItem offline"
-                  }
-                  key={member.id}
-                >
-                  <div className="memberAvatarWrap">
-                    <div className="memberAvatar">
-                      {getUserInitial(member.displayName)}
-                    </div>
-                    <span
-                      className={
-                        member.isOnline ? "memberStatusDot online" : "memberStatusDot offline"
-                      }
-                      title={presenceLabel}
-                    />
-                  </div>
-
-                  <div className="memberInfo">
-                    <strong>{member.displayName || "Guest"}</strong>
-                    <span>
-                      {presenceLabel} · {roleLabel}
-                    </span>
-                  </div>
-
-                  {isActiveServerOwner &&
-                    member.uid !== currentUser.uid &&
-                    member.role !== "owner" && (
-                      <button
-                        className="memberKickButton"
-                        onClick={() => kickMemberFromServer(member)}
-                        disabled={moderationActionLoading}
-                        title="Üyeyi sunucudan at"
-                      >
-                        At
-                      </button>
+            {!memberError && activeMemberCount > 0 && (
+              <>
+                <section className="memberGroup">
+                  <div className="memberGroupTitle">Çevrim içi — {onlineMemberCount}</div>
+                  <div className="memberGroupItems">
+                    {onlineMembers.length > 0 ? (
+                      onlineMembers.map((member) => renderMemberItem(member))
+                    ) : (
+                      <div className="memberEmpty compact">Çevrimiçi üye yok.</div>
                     )}
-                </div>
-              );
-            })}
+                  </div>
+                </section>
+
+                <section className="memberGroup">
+                  <div className="memberGroupTitle">Çevrim dışı — {offlineMemberCount}</div>
+                  <div className="memberGroupItems">
+                    {offlineMembers.length > 0 ? (
+                      offlineMembers.map((member) => renderMemberItem(member))
+                    ) : (
+                      <div className="memberEmpty compact">Çevrimdışı üye yok.</div>
+                    )}
+                  </div>
+                </section>
+              </>
+            )}
           </div>
         </aside>
       )}
