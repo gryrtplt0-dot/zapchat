@@ -244,6 +244,56 @@ input {
   flex-shrink: 0;
 }
 
+.channelCreateMenuWrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.channelCreateMenu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 176px;
+  padding: 6px;
+  border-radius: 12px;
+  background: #1b1f28;
+  border: 1px solid #2d3441;
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.28);
+  z-index: 20;
+}
+
+.channelCreateMenuButton {
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: #d4d9e2;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 10px;
+  border-radius: 9px;
+  cursor: pointer;
+  text-align: left;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.channelCreateMenuButton span {
+  width: 18px;
+  text-align: center;
+  color: #b8c0cf;
+  flex-shrink: 0;
+}
+
+.channelCreateMenuButton:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #ffffff;
+}
+
+.channelCreateMenuButton:hover span {
+  color: #ffffff;
+}
+
 .channelCategoryIconButton {
   min-width: 23px;
   height: 23px;

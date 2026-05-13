@@ -300,6 +300,7 @@ function App() {
   const [channelActionLoading, setChannelActionLoading] = useState(false);
   const [moderationActionLoading, setModerationActionLoading] = useState(false);
   const [collapsedCategoryIds, setCollapsedCategoryIds] = useState({});
+  const [openChannelCreateMenuId, setOpenChannelCreateMenuId] = useState(null);
 
   const messagesEndRef = useRef(null);
   const localStreamRef = useRef(null);
@@ -317,6 +318,26 @@ function App() {
   const screenSenderMapRef = useRef(new Map());
   const screenShareStopInProgressRef = useRef(false);
   const audioMonitorsRef = useRef(new Map());
+
+  useEffect(() => {
+    if (!openChannelCreateMenuId) {
+      return undefined;
+    }
+
+    function handleDocumentClick(event) {
+      if (event.target.closest(".channelCreateMenuWrap")) {
+        return;
+      }
+
+      setOpenChannelCreateMenuId(null);
+    }
+
+    document.addEventListener("mousedown", handleDocumentClick);
+
+    return () => {
+      document.removeEventListener("mousedown", handleDocumentClick);
+    };
+  }, [openChannelCreateMenuId]);
 
   const activeServer =
     servers.find((server) => server.id === activeServerId) || null;
@@ -1132,6 +1153,17 @@ function App() {
     });
   }
 
+  function toggleChannelCreateMenu(categoryId) {
+    setOpenChannelCreateMenuId((previousCategoryId) => {
+      return previousCategoryId === categoryId ? null : categoryId;
+    });
+  }
+
+  function handleChannelCreateMenuAction(type, categoryId) {
+    setOpenChannelCreateMenuId(null);
+    addChannel(type, categoryId);
+  }
+
   async function addChannelCategory() {
     if (!isActiveServerOwner || channelActionLoading) {
       return;
@@ -1337,6 +1369,8 @@ function App() {
   }
 
   async function addChannel(type, categoryId) {
+    setOpenChannelCreateMenuId(null);
+
     if (!isActiveServerOwner || channelActionLoading) {
       return;
     }
@@ -3571,24 +3605,38 @@ function App() {
 
                     {isActiveServerOwner && (
                       <div className="channelCategoryActions">
-                        <button
-                          className="channelCategoryIconButton"
-                          onClick={() => addChannel("text", category.id)}
-                          disabled={channelActionLoading}
-                          title="Bu başlığa metin kanalı ekle"
-                          type="button"
-                        >
-                          #+
-                        </button>
-                        <button
-                          className="channelCategoryIconButton"
-                          onClick={() => addChannel("voice", category.id)}
-                          disabled={channelActionLoading}
-                          title="Bu başlığa ses kanalı ekle"
-                          type="button"
-                        >
-                          🔊+
-                        </button>
+                        <div className="channelCreateMenuWrap">
+                          <button
+                            className="channelCategoryIconButton"
+                            onClick={() => toggleChannelCreateMenu(category.id)}
+                            disabled={channelActionLoading}
+                            title="Bu başlığa kanal ekle"
+                            type="button"
+                          >
+                            +
+                          </button>
+
+                          {openChannelCreateMenuId === category.id && (
+                            <div className="channelCreateMenu">
+                              <button
+                                className="channelCreateMenuButton"
+                                onClick={() => handleChannelCreateMenuAction("text", category.id)}
+                                type="button"
+                              >
+                                <span>#</span>
+                                Metin kanalı ekle
+                              </button>
+                              <button
+                                className="channelCreateMenuButton"
+                                onClick={() => handleChannelCreateMenuAction("voice", category.id)}
+                                type="button"
+                              >
+                                <span>🔊</span>
+                                Ses kanalı ekle
+                              </button>
+                            </div>
+                          )}
+                        </div>
                         <button
                           className="channelCategoryIconButton"
                           onClick={() => renameChannelCategory(category.id)}
