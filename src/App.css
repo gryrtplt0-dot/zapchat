@@ -153,6 +153,33 @@ input {
   background: #3a4254;
 }
 
+.channelCategoryToolbar {
+  margin-top: 18px;
+}
+
+.channelCategoryAddButton {
+  width: 100%;
+  border: 1px dashed #303644;
+  background: rgba(255, 255, 255, 0.03);
+  color: #aeb5c2;
+  padding: 9px 10px;
+  border-radius: 12px;
+  cursor: pointer;
+  font-weight: 800;
+  font-size: 12px;
+}
+
+.channelCategoryAddButton:hover:not(:disabled) {
+  border-color: rgba(255, 176, 32, 0.45);
+  color: #ffcf7a;
+  background: rgba(255, 176, 32, 0.08);
+}
+
+.channelCategoryAddButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .channelCategorySection {
   margin-top: 22px;
 }
@@ -208,6 +235,57 @@ input {
   font-size: 16px;
   line-height: 1;
   flex-shrink: 0;
+}
+
+.channelCategoryActions {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
+.channelCategoryIconButton {
+  min-width: 23px;
+  height: 23px;
+  border: none;
+  background: transparent;
+  color: #9098a7;
+  border-radius: 7px;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.channelCategoryIconButton:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.06);
+  color: #ffffff;
+}
+
+.channelCategoryIconButton.danger:hover:not(:disabled) {
+  background: rgba(255, 107, 107, 0.14);
+  color: #ffb0b0;
+}
+
+.channelCategoryIconButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.channelCategoryBody {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.channelCategoryEmpty {
+  color: #747d8b;
+  border: 1px dashed #303644;
+  padding: 10px 12px;
+  border-radius: 12px;
+  font-size: 12px;
 }
 
 .channelAddButton {

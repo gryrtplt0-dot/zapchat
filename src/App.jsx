@@ -31,15 +31,23 @@ const ICE_SERVERS = [
 const PRESENCE_HEARTBEAT_MS = 25000;
 const ONLINE_TIMEOUT_MS = 70000;
 
+const DEFAULT_TEXT_CATEGORY_ID = "text_channels";
+const DEFAULT_VOICE_CATEGORY_ID = "voice_channels";
+
+const DEFAULT_CHANNEL_CATEGORIES = [
+  { id: DEFAULT_TEXT_CATEGORY_ID, name: "Metin Kanalları", createdAt: 0 },
+  { id: DEFAULT_VOICE_CATEGORY_ID, name: "Ses Kanalları", createdAt: 1 },
+];
+
 const DEFAULT_TEXT_CHANNELS = [
-  { id: "general", name: "genel" },
-  { id: "gaming", name: "oyun" },
-  { id: "study", name: "ders" },
-  { id: "random", name: "rastgele" },
+  { id: "general", name: "genel", categoryId: DEFAULT_TEXT_CATEGORY_ID },
+  { id: "gaming", name: "oyun", categoryId: DEFAULT_TEXT_CATEGORY_ID },
+  { id: "study", name: "ders", categoryId: DEFAULT_TEXT_CATEGORY_ID },
+  { id: "random", name: "rastgele", categoryId: DEFAULT_TEXT_CATEGORY_ID },
 ];
 
 const DEFAULT_VOICE_CHANNELS = [
-  { id: "main_voice", name: "Sesli Sohbet" },
+  { id: "main_voice", name: "Sesli Sohbet", categoryId: DEFAULT_VOICE_CATEGORY_ID },
 ];
 
 function normalizeChannelName(value) {
@@ -82,16 +90,35 @@ function createUniqueChannelId(type, channelName, existingChannels) {
   return `${baseId}_${Date.now()}`;
 }
 
-function getNormalizedChannels(rawChannels, fallbackChannels) {
-  if (!Array.isArray(rawChannels) || rawChannels.length === 0) {
-    return fallbackChannels;
+function createUniqueCategoryId(categoryName, existingCategories) {
+  const baseId = `category_${slugifyChannelName(categoryName)}`;
+  const existingIds = new Set(existingCategories.map((category) => category.id));
+
+  if (!existingIds.has(baseId)) {
+    return baseId;
+  }
+
+  for (let index = 2; index < 1000; index++) {
+    const nextId = `${baseId}_${index}`;
+
+    if (!existingIds.has(nextId)) {
+      return nextId;
+    }
+  }
+
+  return `${baseId}_${Date.now()}`;
+}
+
+function getNormalizedCategories(rawCategories, fallbackCategories) {
+  if (!Array.isArray(rawCategories) || rawCategories.length === 0) {
+    return fallbackCategories;
   }
 
   const seenIds = new Set();
-  const cleanChannels = rawChannels
-    .map((channel) => {
-      const id = String(channel?.id || "").trim();
-      const name = normalizeChannelName(String(channel?.name || ""));
+  const cleanCategories = rawCategories
+    .map((category, index) => {
+      const id = String(category?.id || "").trim();
+      const name = normalizeChannelName(String(category?.name || ""));
 
       if (!id || !name || seenIds.has(id)) {
         return null;
@@ -102,12 +129,62 @@ function getNormalizedChannels(rawChannels, fallbackChannels) {
       return {
         id,
         name,
-        createdAt: channel?.createdAt || 0,
+        createdAt: category?.createdAt ?? index,
+        updatedAt: category?.updatedAt || null,
       };
     })
     .filter(Boolean);
 
-  return cleanChannels.length > 0 ? cleanChannels : fallbackChannels;
+  return cleanCategories.length > 0 ? cleanCategories : fallbackCategories;
+}
+
+function getNormalizedChannels(
+  rawChannels,
+  fallbackChannels,
+  fallbackCategoryId,
+  validCategoryIds
+) {
+  const normalizeChannel = (channel, index) => {
+    const id = String(channel?.id || "").trim();
+    const name = normalizeChannelName(String(channel?.name || ""));
+
+    if (!id || !name) {
+      return null;
+    }
+
+    const rawCategoryId = String(channel?.categoryId || "").trim();
+    const categoryId = validCategoryIds.has(rawCategoryId)
+      ? rawCategoryId
+      : fallbackCategoryId;
+
+    return {
+      id,
+      name,
+      categoryId,
+      createdAt: channel?.createdAt ?? index,
+      updatedAt: channel?.updatedAt || null,
+    };
+  };
+
+  if (!Array.isArray(rawChannels) || rawChannels.length === 0) {
+    return fallbackChannels.map(normalizeChannel).filter(Boolean);
+  }
+
+  const seenIds = new Set();
+  const cleanChannels = rawChannels
+    .map(normalizeChannel)
+    .filter((channel) => {
+      if (!channel || seenIds.has(channel.id)) {
+        return false;
+      }
+
+      seenIds.add(channel.id);
+      return true;
+    });
+
+  return cleanChannels.length > 0
+    ? cleanChannels
+    : fallbackChannels.map(normalizeChannel).filter(Boolean);
 }
 
 function getTimestampMillis(value) {
@@ -222,8 +299,7 @@ function App() {
   const [activeVoiceChannelId, setActiveVoiceChannelId] = useState(null);
   const [channelActionLoading, setChannelActionLoading] = useState(false);
   const [moderationActionLoading, setModerationActionLoading] = useState(false);
-  const [textChannelsExpanded, setTextChannelsExpanded] = useState(true);
-  const [voiceChannelsExpanded, setVoiceChannelsExpanded] = useState(true);
+  const [collapsedCategoryIds, setCollapsedCategoryIds] = useState({});
 
   const messagesEndRef = useRef(null);
   const localStreamRef = useRef(null);
@@ -250,13 +326,48 @@ function App() {
     currentUser &&
     activeServer.createdByUid === currentUser.uid;
 
+  const channelCategories = useMemo(() => {
+    return getNormalizedCategories(
+      activeServer?.channelCategories,
+      DEFAULT_CHANNEL_CATEGORIES
+    );
+  }, [activeServer?.channelCategories]);
+
+  const channelCategoryIds = useMemo(() => {
+    return new Set(channelCategories.map((category) => category.id));
+  }, [channelCategories]);
+
   const textChannels = useMemo(() => {
-    return getNormalizedChannels(activeServer?.textChannels, DEFAULT_TEXT_CHANNELS);
-  }, [activeServer?.textChannels]);
+    return getNormalizedChannels(
+      activeServer?.textChannels,
+      DEFAULT_TEXT_CHANNELS,
+      DEFAULT_TEXT_CATEGORY_ID,
+      channelCategoryIds
+    );
+  }, [activeServer?.textChannels, channelCategoryIds]);
 
   const voiceChannels = useMemo(() => {
-    return getNormalizedChannels(activeServer?.voiceChannels, DEFAULT_VOICE_CHANNELS);
-  }, [activeServer?.voiceChannels]);
+    return getNormalizedChannels(
+      activeServer?.voiceChannels,
+      DEFAULT_VOICE_CHANNELS,
+      DEFAULT_VOICE_CATEGORY_ID,
+      channelCategoryIds
+    );
+  }, [activeServer?.voiceChannels, channelCategoryIds]);
+
+  const displayedChannelCategories = useMemo(() => {
+    return channelCategories.map((category) => {
+      return {
+        ...category,
+        textChannels: textChannels.filter((channel) => {
+          return channel.categoryId === category.id;
+        }),
+        voiceChannels: voiceChannels.filter((channel) => {
+          return channel.categoryId === category.id;
+        }),
+      };
+    });
+  }, [channelCategories, textChannels, voiceChannels]);
 
   const voiceChannelsKey = useMemo(() => {
     return voiceChannels.map((channel) => channel.id).join("|");
@@ -822,6 +933,7 @@ function App() {
         inviteCode,
         textChannels: DEFAULT_TEXT_CHANNELS,
         voiceChannels: DEFAULT_VOICE_CHANNELS,
+        channelCategories: DEFAULT_CHANNEL_CATEGORIES,
         createdByUid: currentUser.uid,
         createdByEmail: currentUser.email,
         createdAt: serverTimestamp(),
@@ -993,7 +1105,11 @@ function App() {
     }
   }
 
-  async function updateServerChannels(nextTextChannels, nextVoiceChannels) {
+  async function updateServerChannels(
+    nextTextChannels,
+    nextVoiceChannels,
+    nextChannelCategories = channelCategories
+  ) {
     if (!currentUser || !activeServer || !isActiveServerOwner) {
       alert("Kanalları sadece sunucu sahibi düzenleyebilir.");
       return;
@@ -1002,12 +1118,235 @@ function App() {
     await updateDoc(doc(db, "servers", activeServer.id), {
       textChannels: nextTextChannels,
       voiceChannels: nextVoiceChannels,
+      channelCategories: nextChannelCategories,
       updatedAt: serverTimestamp(),
     });
   }
 
-  async function addChannel(type) {
+  function toggleChannelCategory(categoryId) {
+    setCollapsedCategoryIds((previousCategoryIds) => {
+      return {
+        ...previousCategoryIds,
+        [categoryId]: !previousCategoryIds[categoryId],
+      };
+    });
+  }
+
+  async function addChannelCategory() {
     if (!isActiveServerOwner || channelActionLoading) {
+      return;
+    }
+
+    const rawName = prompt("Yeni kanal başlığının adı ne olsun?");
+
+    if (rawName === null) {
+      return;
+    }
+
+    const cleanName = normalizeChannelName(rawName);
+
+    if (cleanName.length < 2) {
+      alert("Başlık adı en az 2 karakter olmalı.");
+      return;
+    }
+
+    if (cleanName.length > 28) {
+      alert("Başlık adı en fazla 28 karakter olabilir.");
+      return;
+    }
+
+    const alreadyExists = channelCategories.some((category) => {
+      return category.name.toLocaleLowerCase("tr-TR") === cleanName.toLocaleLowerCase("tr-TR");
+    });
+
+    if (alreadyExists) {
+      alert("Bu isimde bir başlık zaten var.");
+      return;
+    }
+
+    const newCategory = {
+      id: createUniqueCategoryId(cleanName, channelCategories),
+      name: cleanName,
+      createdAt: Date.now(),
+    };
+
+    try {
+      setChannelActionLoading(true);
+      await updateServerChannels(textChannels, voiceChannels, [
+        ...channelCategories,
+        newCategory,
+      ]);
+      setCollapsedCategoryIds((previousCategoryIds) => {
+        return {
+          ...previousCategoryIds,
+          [newCategory.id]: false,
+        };
+      });
+    } catch (error) {
+      console.error("Kanal başlığı eklenemedi:", error);
+      alert("Kanal başlığı eklenemedi. Firebase Rules veya bağlantı ayarlarını kontrol et.");
+    } finally {
+      setChannelActionLoading(false);
+    }
+  }
+
+  async function renameChannelCategory(categoryId) {
+    if (!isActiveServerOwner || channelActionLoading) {
+      return;
+    }
+
+    const editedCategory = channelCategories.find((category) => category.id === categoryId);
+
+    if (!editedCategory) {
+      return;
+    }
+
+    const rawName = prompt(
+      `${editedCategory.name} başlığının yeni adı ne olsun?`,
+      editedCategory.name
+    );
+
+    if (rawName === null) {
+      return;
+    }
+
+    const cleanName = normalizeChannelName(rawName);
+
+    if (cleanName.length < 2) {
+      alert("Başlık adı en az 2 karakter olmalı.");
+      return;
+    }
+
+    if (cleanName.length > 28) {
+      alert("Başlık adı en fazla 28 karakter olabilir.");
+      return;
+    }
+
+    const sameName =
+      editedCategory.name.toLocaleLowerCase("tr-TR") ===
+      cleanName.toLocaleLowerCase("tr-TR");
+
+    if (sameName) {
+      return;
+    }
+
+    const alreadyExists = channelCategories.some((category) => {
+      return (
+        category.id !== categoryId &&
+        category.name.toLocaleLowerCase("tr-TR") ===
+          cleanName.toLocaleLowerCase("tr-TR")
+      );
+    });
+
+    if (alreadyExists) {
+      alert("Bu isimde bir başlık zaten var.");
+      return;
+    }
+
+    const nextCategories = channelCategories.map((category) => {
+      if (category.id !== categoryId) {
+        return category;
+      }
+
+      return {
+        ...category,
+        name: cleanName,
+        updatedAt: Date.now(),
+      };
+    });
+
+    try {
+      setChannelActionLoading(true);
+      await updateServerChannels(textChannels, voiceChannels, nextCategories);
+    } catch (error) {
+      console.error("Kanal başlığı değiştirilemedi:", error);
+      alert("Kanal başlığı değiştirilemedi. Firebase Rules veya bağlantı ayarlarını kontrol et.");
+    } finally {
+      setChannelActionLoading(false);
+    }
+  }
+
+  async function deleteChannelCategory(categoryId) {
+    if (!isActiveServerOwner || channelActionLoading) {
+      return;
+    }
+
+    const deletedCategory = channelCategories.find((category) => category.id === categoryId);
+
+    if (!deletedCategory) {
+      return;
+    }
+
+    if (channelCategories.length <= 1) {
+      alert("Son başlığı silemezsin. Önce yeni bir başlık oluştur.");
+      return;
+    }
+
+    const fallbackCategory = channelCategories.find((category) => {
+      return category.id !== categoryId;
+    });
+
+    if (!fallbackCategory) {
+      return;
+    }
+
+    const textChannelCount = textChannels.filter((channel) => channel.categoryId === categoryId).length;
+    const voiceChannelCount = voiceChannels.filter((channel) => channel.categoryId === categoryId).length;
+    const containsChannels = textChannelCount + voiceChannelCount > 0;
+    const shouldDelete = confirm(
+      containsChannels
+        ? `${deletedCategory.name} başlığı silinsin mi? İçindeki kanallar ${fallbackCategory.name} başlığına taşınacak.`
+        : `${deletedCategory.name} başlığı silinsin mi?`
+    );
+
+    if (!shouldDelete) {
+      return;
+    }
+
+    const nextCategories = channelCategories.filter((category) => category.id !== categoryId);
+    const moveChannelToFallback = (channel) => {
+      if (channel.categoryId !== categoryId) {
+        return channel;
+      }
+
+      return {
+        ...channel,
+        categoryId: fallbackCategory.id,
+        updatedAt: Date.now(),
+      };
+    };
+
+    try {
+      setChannelActionLoading(true);
+      await updateServerChannels(
+        textChannels.map(moveChannelToFallback),
+        voiceChannels.map(moveChannelToFallback),
+        nextCategories
+      );
+      setCollapsedCategoryIds((previousCategoryIds) => {
+        const nextCategoryIds = { ...previousCategoryIds };
+        delete nextCategoryIds[categoryId];
+        return nextCategoryIds;
+      });
+    } catch (error) {
+      console.error("Kanal başlığı silinemedi:", error);
+      alert("Kanal başlığı silinemedi. Firebase Rules veya bağlantı ayarlarını kontrol et.");
+    } finally {
+      setChannelActionLoading(false);
+    }
+  }
+
+  async function addChannel(type, categoryId) {
+    if (!isActiveServerOwner || channelActionLoading) {
+      return;
+    }
+
+    const targetCategoryId = channelCategoryIds.has(categoryId)
+      ? categoryId
+      : channelCategories[0]?.id;
+
+    if (!targetCategoryId) {
+      alert("Önce bir kanal başlığı oluşturmalısın.");
       return;
     }
 
@@ -1043,6 +1382,7 @@ function App() {
     const newChannel = {
       id: createUniqueChannelId(type, cleanName, existingChannels),
       name: cleanName,
+      categoryId: targetCategoryId,
       createdAt: Date.now(),
     };
 
@@ -1051,10 +1391,16 @@ function App() {
 
       if (type === "voice") {
         await updateServerChannels(textChannels, [...voiceChannels, newChannel]);
+        setCollapsedCategoryIds((previousCategoryIds) => {
+          return { ...previousCategoryIds, [targetCategoryId]: false };
+        });
         return;
       }
 
       await updateServerChannels([...textChannels, newChannel], voiceChannels);
+      setCollapsedCategoryIds((previousCategoryIds) => {
+        return { ...previousCategoryIds, [targetCategoryId]: false };
+      });
       setActiveChannel(newChannel.id);
     } catch (error) {
       console.error("Kanal eklenemedi:", error);
@@ -2829,6 +3175,299 @@ function App() {
     );
   }
 
+  function renderTextChannel(channel) {
+    return (
+      <div className="channelRow" key={`text-${channel.id}`}>
+        <button
+          className={
+            activeChannel === channel.id ? "channelButton active" : "channelButton"
+          }
+          onClick={() => selectTextChannel(channel.id)}
+        >
+          <span className="channelButtonIcon">#</span>
+          <span className="channelButtonLabel">{channel.name}</span>
+        </button>
+
+        {isActiveServerOwner && (
+          <div className="channelRowActions">
+            <button
+              className="channelEditButton"
+              onClick={() => renameChannel("text", channel.id)}
+              disabled={channelActionLoading}
+              title="Metin kanalını düzenle"
+            >
+              ✎
+            </button>
+
+            {textChannels.length > 1 && (
+              <button
+                className="channelDeleteButton"
+                onClick={() => deleteChannel("text", channel.id)}
+                disabled={channelActionLoading}
+                title="Metin kanalını sil"
+              >
+                ×
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  function renderVoiceChannel(voiceChannel) {
+    const channelParticipants = getVoiceParticipantsForChannel(voiceChannel.id);
+    const isCurrentVoiceChannel =
+      voiceJoined && activeVoiceChannelId === voiceChannel.id;
+
+    return (
+      <div
+        className={isCurrentVoiceChannel ? "voiceBox active" : "voiceBox"}
+        key={`voice-${voiceChannel.id}`}
+      >
+        <div className="voiceChannelTitle">
+          <button
+            className={
+              isCurrentVoiceChannel
+                ? "voiceChannelJoinTarget active"
+                : "voiceChannelJoinTarget"
+            }
+            onClick={() => {
+              if (isCurrentVoiceChannel) {
+                return;
+              }
+
+              joinVoiceRoom(voiceChannel.id, voiceChannel.name);
+            }}
+            disabled={voiceJoining && !isCurrentVoiceChannel}
+            title={
+              isCurrentVoiceChannel
+                ? "Şu anda bu ses kanalındasın"
+                : voiceJoined
+                  ? "Bu ses kanalına geç"
+                  : "Ses kanalına katıl"
+            }
+            type="button"
+          >
+            <span className="voiceChannelIcon">🔊</span>
+            <div className="voiceChannelMeta">
+              <strong>{voiceChannel.name}</strong>
+              <small>{channelParticipants.length} kişi bağlı</small>
+            </div>
+            <span className="voiceChannelCount">{channelParticipants.length}</span>
+          </button>
+
+          {isActiveServerOwner && (
+            <div className="voiceChannelManageButtons">
+              <button
+                className="voiceChannelEditButton"
+                onClick={() => renameChannel("voice", voiceChannel.id)}
+                disabled={channelActionLoading}
+                title="Ses kanalını düzenle"
+              >
+                ✎
+              </button>
+
+              {voiceChannels.length > 1 && (
+                <button
+                  className="voiceChannelDeleteButton"
+                  onClick={() => deleteChannel("voice", voiceChannel.id)}
+                  disabled={channelActionLoading}
+                  title="Ses kanalını sil"
+                >
+                  ×
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="voiceParticipantList">
+          {channelParticipants.length === 0 && (
+            <div className="voiceParticipantEmpty">Şu an bu kanalda kimse yok.</div>
+          )}
+
+          {channelParticipants.map((participant) => {
+            const isCurrentUser = participant.uid === currentUser.uid;
+            const effectiveMuted = participant.serverMuted || participant.muted;
+            const isSpeaking = speakingUsers[participant.uid] && !effectiveMuted;
+            const canModerateVoiceParticipant = isActiveServerOwner && !isCurrentUser;
+            const participantStatus = participant.serverMuted
+              ? "Sunucu tarafından susturuldu"
+              : participant.screenSharing
+                ? effectiveMuted
+                  ? "Ekran paylaşıyor · mikrofon kapalı"
+                  : isSpeaking
+                    ? "Ekran paylaşıyor · konuşuyor"
+                    : "Ekran paylaşıyor"
+                : effectiveMuted
+                  ? "Mikrofon kapalı"
+                  : isSpeaking
+                    ? "Konuşuyor"
+                    : "Sessiz";
+
+            return (
+              <div
+                className={
+                  isSpeaking ? "voiceParticipantItem speaking" : "voiceParticipantItem"
+                }
+                key={participant.uid}
+              >
+                <div
+                  className={
+                    isSpeaking
+                      ? "voiceParticipantAvatar speaking"
+                      : "voiceParticipantAvatar"
+                  }
+                >
+                  {getUserInitial(participant.displayName)}
+                </div>
+
+                <div className="voiceParticipantInfo">
+                  <strong>
+                    {participant.displayName || "Guest"}
+                    {isCurrentUser ? " (sen)" : ""}
+                  </strong>
+                  <span>{participantStatus}</span>
+                </div>
+
+                <span className="voiceParticipantIcon">
+                  {participant.serverMuted
+                    ? "⛔"
+                    : participant.screenSharing
+                      ? "🖥️"
+                      : effectiveMuted
+                        ? "🔇"
+                        : isSpeaking
+                          ? "🟢"
+                          : "🎙️"}
+                </span>
+
+                {canModerateVoiceParticipant && (
+                  <div className="voiceParticipantModeration">
+                    <button
+                      className={
+                        participant.serverMuted
+                          ? "voiceModButton unmute"
+                          : "voiceModButton mute"
+                      }
+                      onClick={() => toggleServerMuteParticipant(participant)}
+                      disabled={moderationActionLoading}
+                      title={
+                        participant.serverMuted
+                          ? "Susturmayı kaldırma iznini geri ver"
+                          : "Kullanıcıyı sunucu tarafından sustur"
+                      }
+                    >
+                      {participant.serverMuted ? "İzin Ver" : "Sustur"}
+                    </button>
+
+                    <button
+                      className="voiceModButton kick"
+                      onClick={() => kickVoiceParticipant(participant)}
+                      disabled={moderationActionLoading}
+                      title="Ses kanalından at"
+                    >
+                      At
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {isCurrentVoiceChannel && (
+          <div className="voiceActions">
+            <button
+              className={
+                voiceServerMuted || voiceMuted
+                  ? "voiceMuteButton voiceIconButton muted"
+                  : "voiceMuteButton voiceIconButton"
+              }
+              onClick={toggleVoiceMute}
+              disabled={voiceServerMuted}
+              title={
+                voiceServerMuted
+                  ? "Sunucu sahibi mikrofonunu kapattı. Açma izni verilince tekrar açabilirsin."
+                  : voiceMuted
+                    ? "Mikrofonu aç"
+                    : "Mikrofonu kapat"
+              }
+              aria-label={
+                voiceServerMuted
+                  ? "Sunucu sahibi tarafından susturuldun"
+                  : voiceMuted
+                    ? "Mikrofonu aç"
+                    : "Mikrofonu kapat"
+              }
+            >
+              <span className="voiceActionIcon">
+                {voiceServerMuted ? "⛔" : voiceMuted ? "🔇" : "🎤"}
+              </span>
+            </button>
+
+            <button
+              className={
+                screenSharing
+                  ? "screenShareButton voiceIconButton active"
+                  : "screenShareButton voiceIconButton"
+              }
+              onClick={() => {
+                if (screenSharing) {
+                  stopScreenShare();
+                  return;
+                }
+
+                startScreenShare();
+              }}
+              disabled={screenShareStarting}
+              title={
+                screenShareStarting
+                  ? "Ekran paylaşımı başlatılıyor"
+                  : screenSharing
+                    ? "Ekran paylaşımını durdur"
+                    : "Ekranı paylaş"
+              }
+              aria-label={
+                screenShareStarting
+                  ? "Ekran paylaşımı başlatılıyor"
+                  : screenSharing
+                    ? "Ekran paylaşımını durdur"
+                    : "Ekranı paylaş"
+              }
+            >
+              <span className="voiceActionIcon">
+                {screenShareStarting ? "…" : "🖥️"}
+              </span>
+            </button>
+
+            <button
+              className="voiceLeaveButton voiceIconButton leave"
+              onClick={() => leaveVoiceRoom()}
+              title="Sesten ayrıl"
+              aria-label="Sesten ayrıl"
+            >
+              <span className="voiceActionIcon">📞</span>
+            </button>
+          </div>
+        )}
+
+        {isCurrentVoiceChannel && (
+          <>
+            <p className="voiceStatusText">{voiceStatus}</p>
+
+            {voiceJoined && remoteStreams.length > 0 && (
+              <div className="voiceRemoteCount">
+                {remoteStreams.length} uzak ses bağlantısı aktif.
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="app">
       <aside className="serverBar">
@@ -2896,372 +3535,114 @@ function App() {
 
         {activeServer ? (
           <>
-            <section className="channelCategorySection">
-              <div className="channelSectionHeader channelSectionHeaderFancy">
+            {isActiveServerOwner && (
+              <div className="channelCategoryToolbar">
                 <button
-                  className="channelSectionToggle"
-                  onClick={() => setTextChannelsExpanded((previous) => !previous)}
+                  className="channelCategoryAddButton"
+                  onClick={addChannelCategory}
+                  disabled={channelActionLoading}
                   type="button"
                 >
-                  <span className="channelSectionLine" />
-                  <span className="channelSectionTitle">Metin Kanalları</span>
-                  <span className="channelSectionLine" />
-                  <span className="channelSectionChevron">
-                    {textChannelsExpanded ? "⌄" : "›"}
-                  </span>
+                  + Başlık Ekle
                 </button>
-
-                {isActiveServerOwner && (
-                  <button
-                    className="channelAddButton"
-                    onClick={() => addChannel("text")}
-                    disabled={channelActionLoading}
-                    title="Metin kanalı ekle"
-                  >
-                    +
-                  </button>
-                )}
               </div>
+            )}
 
-              {textChannelsExpanded && (
-                <div className="channels">
-                  {textChannels.map((channel) => (
-                    <div className="channelRow" key={channel.id}>
-                      <button
-                        className={
-                          activeChannel === channel.id
-                            ? "channelButton active"
-                            : "channelButton"
-                        }
-                        onClick={() => selectTextChannel(channel.id)}
-                      >
-                        <span className="channelButtonIcon">#</span>
-                        <span className="channelButtonLabel">{channel.name}</span>
-                      </button>
+            {displayedChannelCategories.map((category) => {
+              const categoryCollapsed = collapsedCategoryIds[category.id] === true;
+              const categoryChannelCount =
+                category.textChannels.length + category.voiceChannels.length;
 
-                      {isActiveServerOwner && (
-                        <div className="channelRowActions">
+              return (
+                <section className="channelCategorySection" key={category.id}>
+                  <div className="channelSectionHeader channelSectionHeaderFancy">
+                    <button
+                      className="channelSectionToggle"
+                      onClick={() => toggleChannelCategory(category.id)}
+                      type="button"
+                    >
+                      <span className="channelSectionLine" />
+                      <span className="channelSectionTitle">{category.name}</span>
+                      <span className="channelSectionLine" />
+                      <span className="channelSectionChevron">
+                        {categoryCollapsed ? "›" : "⌄"}
+                      </span>
+                    </button>
+
+                    {isActiveServerOwner && (
+                      <div className="channelCategoryActions">
+                        <button
+                          className="channelCategoryIconButton"
+                          onClick={() => addChannel("text", category.id)}
+                          disabled={channelActionLoading}
+                          title="Bu başlığa metin kanalı ekle"
+                          type="button"
+                        >
+                          #+
+                        </button>
+                        <button
+                          className="channelCategoryIconButton"
+                          onClick={() => addChannel("voice", category.id)}
+                          disabled={channelActionLoading}
+                          title="Bu başlığa ses kanalı ekle"
+                          type="button"
+                        >
+                          🔊+
+                        </button>
+                        <button
+                          className="channelCategoryIconButton"
+                          onClick={() => renameChannelCategory(category.id)}
+                          disabled={channelActionLoading}
+                          title="Başlığı düzenle"
+                          type="button"
+                        >
+                          ✎
+                        </button>
+                        {channelCategories.length > 1 && (
                           <button
-                            className="channelEditButton"
-                            onClick={() => renameChannel("text", channel.id)}
+                            className="channelCategoryIconButton danger"
+                            onClick={() => deleteChannelCategory(category.id)}
                             disabled={channelActionLoading}
-                            title="Metin kanalını düzenle"
+                            title="Başlığı sil"
+                            type="button"
                           >
-                            ✎
+                            ×
                           </button>
-
-                          {textChannels.length > 1 && (
-                            <button
-                              className="channelDeleteButton"
-                              onClick={() => deleteChannel("text", channel.id)}
-                              disabled={channelActionLoading}
-                              title="Metin kanalını sil"
-                            >
-                              ×
-                            </button>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </section>
-
-            <section className="channelCategorySection">
-              <div className="channelSectionHeader channelSectionHeaderFancy">
-                <button
-                  className="channelSectionToggle"
-                  onClick={() => setVoiceChannelsExpanded((previous) => !previous)}
-                  type="button"
-                >
-                  <span className="channelSectionLine" />
-                  <span className="channelSectionTitle">Ses Kanalları</span>
-                  <span className="channelSectionLine" />
-                  <span className="channelSectionChevron">
-                    {voiceChannelsExpanded ? "⌄" : "›"}
-                  </span>
-                </button>
-
-                {isActiveServerOwner && (
-                  <button
-                    className="channelAddButton"
-                    onClick={() => addChannel("voice")}
-                    disabled={channelActionLoading}
-                    title="Ses kanalı ekle"
-                  >
-                    +
-                  </button>
-                )}
-              </div>
-
-              {voiceChannelsExpanded && (
-                <div className="voiceChannelList">
-              {voiceChannels.map((voiceChannel) => {
-                const channelParticipants = getVoiceParticipantsForChannel(
-                  voiceChannel.id
-                );
-                const isCurrentVoiceChannel =
-                  voiceJoined && activeVoiceChannelId === voiceChannel.id;
-
-                return (
-                  <div
-                    className={isCurrentVoiceChannel ? "voiceBox active" : "voiceBox"}
-                    key={voiceChannel.id}
-                  >
-                    <div className="voiceChannelTitle">
-                      <button
-                        className={
-                          isCurrentVoiceChannel
-                            ? "voiceChannelJoinTarget active"
-                            : "voiceChannelJoinTarget"
-                        }
-                        onClick={() => {
-                          if (isCurrentVoiceChannel) {
-                            return;
-                          }
-
-                          joinVoiceRoom(voiceChannel.id, voiceChannel.name);
-                        }}
-                        disabled={voiceJoining && !isCurrentVoiceChannel}
-                        title={
-                          isCurrentVoiceChannel
-                            ? "Şu anda bu ses kanalındasın"
-                            : voiceJoined
-                              ? "Bu ses kanalına geç"
-                              : "Ses kanalına katıl"
-                        }
-                        type="button"
-                      >
-                        <span className="voiceChannelIcon">🔊</span>
-                        <div className="voiceChannelMeta">
-                          <strong>{voiceChannel.name}</strong>
-                          <small>{channelParticipants.length} kişi bağlı</small>
-                        </div>
-                        <span className="voiceChannelCount">{channelParticipants.length}</span>
-                      </button>
-
-                      {isActiveServerOwner && (
-                        <div className="voiceChannelManageButtons">
-                          <button
-                            className="voiceChannelEditButton"
-                            onClick={() => renameChannel("voice", voiceChannel.id)}
-                            disabled={channelActionLoading}
-                            title="Ses kanalını düzenle"
-                          >
-                            ✎
-                          </button>
-
-                          {voiceChannels.length > 1 && (
-                            <button
-                              className="voiceChannelDeleteButton"
-                              onClick={() => deleteChannel("voice", voiceChannel.id)}
-                              disabled={channelActionLoading}
-                              title="Ses kanalını sil"
-                            >
-                              ×
-                            </button>
-                          )}
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="voiceParticipantList">
-                      {channelParticipants.length === 0 && (
-                        <div className="voiceParticipantEmpty">
-                          Şu an bu kanalda kimse yok.
-                        </div>
-                      )}
-
-                      {channelParticipants.map((participant) => {
-                        const isCurrentUser = participant.uid === currentUser.uid;
-                        const effectiveMuted = participant.serverMuted || participant.muted;
-                        const isSpeaking =
-                          speakingUsers[participant.uid] && !effectiveMuted;
-                        const canModerateVoiceParticipant =
-                          isActiveServerOwner && !isCurrentUser;
-                        const participantStatus = participant.serverMuted
-                          ? "Sunucu tarafından susturuldu"
-                          : participant.screenSharing
-                            ? effectiveMuted
-                              ? "Ekran paylaşıyor · mikrofon kapalı"
-                              : isSpeaking
-                                ? "Ekran paylaşıyor · konuşuyor"
-                                : "Ekran paylaşıyor"
-                            : effectiveMuted
-                              ? "Mikrofon kapalı"
-                              : isSpeaking
-                                ? "Konuşuyor"
-                                : "Sessiz";
-
-                        return (
-                          <div
-                            className={
-                              isSpeaking
-                                ? "voiceParticipantItem speaking"
-                                : "voiceParticipantItem"
-                            }
-                            key={participant.uid}
-                          >
-                            <div
-                              className={
-                                isSpeaking
-                                  ? "voiceParticipantAvatar speaking"
-                                  : "voiceParticipantAvatar"
-                              }
-                            >
-                              {getUserInitial(participant.displayName)}
-                            </div>
-
-                            <div className="voiceParticipantInfo">
-                              <strong>
-                                {participant.displayName || "Guest"}
-                                {isCurrentUser ? " (sen)" : ""}
-                              </strong>
-                              <span>{participantStatus}</span>
-                            </div>
-
-                            <span className="voiceParticipantIcon">
-                              {participant.serverMuted
-                                ? "⛔"
-                                : participant.screenSharing
-                                  ? "🖥️"
-                                  : effectiveMuted
-                                    ? "🔇"
-                                    : isSpeaking
-                                      ? "🟢"
-                                      : "🎙️"}
-                            </span>
-
-                            {canModerateVoiceParticipant && (
-                              <div className="voiceParticipantModeration">
-                                <button
-                                  className={
-                                    participant.serverMuted
-                                      ? "voiceModButton unmute"
-                                      : "voiceModButton mute"
-                                  }
-                                  onClick={() => toggleServerMuteParticipant(participant)}
-                                  disabled={moderationActionLoading}
-                                  title={
-                                    participant.serverMuted
-                                      ? "Susturmayı kaldırma iznini geri ver"
-                                      : "Kullanıcıyı sunucu tarafından sustur"
-                                  }
-                                >
-                                  {participant.serverMuted ? "İzin Ver" : "Sustur"}
-                                </button>
-
-                                <button
-                                  className="voiceModButton kick"
-                                  onClick={() => kickVoiceParticipant(participant)}
-                                  disabled={moderationActionLoading}
-                                  title="Ses kanalından at"
-                                >
-                                  At
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-
-                    {isCurrentVoiceChannel && (
-                      <div className="voiceActions">
-                        <button
-                          className={
-                            voiceServerMuted || voiceMuted
-                              ? "voiceMuteButton voiceIconButton muted"
-                              : "voiceMuteButton voiceIconButton"
-                          }
-                          onClick={toggleVoiceMute}
-                          disabled={voiceServerMuted}
-                          title={
-                            voiceServerMuted
-                              ? "Sunucu sahibi mikrofonunu kapattı. Açma izni verilince tekrar açabilirsin."
-                              : voiceMuted
-                                ? "Mikrofonu aç"
-                                : "Mikrofonu kapat"
-                          }
-                          aria-label={
-                            voiceServerMuted
-                              ? "Sunucu sahibi tarafından susturuldun"
-                              : voiceMuted
-                                ? "Mikrofonu aç"
-                                : "Mikrofonu kapat"
-                          }
-                        >
-                          <span className="voiceActionIcon">
-                            {voiceServerMuted ? "⛔" : voiceMuted ? "🔇" : "🎤"}
-                          </span>
-                        </button>
-
-                        <button
-                          className={
-                            screenSharing
-                              ? "screenShareButton voiceIconButton active"
-                              : "screenShareButton voiceIconButton"
-                          }
-                          onClick={() => {
-                            if (screenSharing) {
-                              stopScreenShare();
-                              return;
-                            }
-
-                            startScreenShare();
-                          }}
-                          disabled={screenShareStarting}
-                          title={
-                            screenShareStarting
-                              ? "Ekran paylaşımı başlatılıyor"
-                              : screenSharing
-                                ? "Ekran paylaşımını durdur"
-                                : "Ekranı paylaş"
-                          }
-                          aria-label={
-                            screenShareStarting
-                              ? "Ekran paylaşımı başlatılıyor"
-                              : screenSharing
-                                ? "Ekran paylaşımını durdur"
-                                : "Ekranı paylaş"
-                          }
-                        >
-                          <span className="voiceActionIcon">
-                            {screenShareStarting ? "…" : "🖥️"}
-                          </span>
-                        </button>
-
-                        <button
-                          className="voiceLeaveButton voiceIconButton leave"
-                          onClick={() => leaveVoiceRoom()}
-                          title="Sesten ayrıl"
-                          aria-label="Sesten ayrıl"
-                        >
-                          <span className="voiceActionIcon">📞</span>
-                        </button>
+                        )}
                       </div>
                     )}
-
-                    {isCurrentVoiceChannel && (
-                      <>
-                        <p className="voiceStatusText">{voiceStatus}</p>
-
-                        {voiceJoined && remoteStreams.length > 0 && (
-                          <div className="voiceRemoteCount">
-                            {remoteStreams.length} uzak ses bağlantısı aktif.
-                          </div>
-                        )}
-                      </>
-                    )}
                   </div>
-                );
-              })}
 
-              {voiceError && <div className="voiceErrorText">{voiceError}</div>}
-                </div>
-              )}
-            </section>
+                  {!categoryCollapsed && (
+                    <div className="channelCategoryBody">
+                      {category.textChannels.length > 0 && (
+                        <div className="channels">
+                          {category.textChannels.map((channel) => {
+                            return renderTextChannel(channel);
+                          })}
+                        </div>
+                      )}
+
+                      {category.voiceChannels.length > 0 && (
+                        <div className="voiceChannelList">
+                          {category.voiceChannels.map((voiceChannel) => {
+                            return renderVoiceChannel(voiceChannel);
+                          })}
+                        </div>
+                      )}
+
+                      {categoryChannelCount === 0 && (
+                        <div className="channelCategoryEmpty">
+                          Bu başlıkta henüz kanal yok.
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </section>
+              );
+            })}
+
+            {voiceError && <div className="voiceErrorText">{voiceError}</div>}
           </>
         ) : (
           <div className="sidebarHint">
