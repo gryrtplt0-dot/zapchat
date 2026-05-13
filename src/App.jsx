@@ -301,6 +301,7 @@ function App() {
   const [moderationActionLoading, setModerationActionLoading] = useState(false);
   const [collapsedCategoryIds, setCollapsedCategoryIds] = useState({});
   const [openChannelCreateMenuId, setOpenChannelCreateMenuId] = useState(null);
+  const [serverMenuOpen, setServerMenuOpen] = useState(false);
 
   const messagesEndRef = useRef(null);
   const localStreamRef = useRef(null);
@@ -320,16 +321,18 @@ function App() {
   const audioMonitorsRef = useRef(new Map());
 
   useEffect(() => {
-    if (!openChannelCreateMenuId) {
+    if (!openChannelCreateMenuId && !serverMenuOpen) {
       return undefined;
     }
 
     function handleDocumentClick(event) {
-      if (event.target.closest(".channelCreateMenuWrap")) {
-        return;
+      if (!event.target.closest(".channelCreateMenuWrap")) {
+        setOpenChannelCreateMenuId(null);
       }
 
-      setOpenChannelCreateMenuId(null);
+      if (!event.target.closest(".serverMenuWrap")) {
+        setServerMenuOpen(false);
+      }
     }
 
     document.addEventListener("mousedown", handleDocumentClick);
@@ -337,7 +340,7 @@ function App() {
     return () => {
       document.removeEventListener("mousedown", handleDocumentClick);
     };
-  }, [openChannelCreateMenuId]);
+  }, [openChannelCreateMenuId, serverMenuOpen]);
 
   const activeServer =
     servers.find((server) => server.id === activeServerId) || null;
@@ -3517,6 +3520,7 @@ function App() {
             onClick={() => {
               setActiveServerId(server.id);
               setActiveChannel("general");
+              setServerMenuOpen(false);
             }}
           >
             {getServerInitial(server.name)}
@@ -3533,9 +3537,46 @@ function App() {
       </aside>
 
       <aside className="channelBar">
-        <div className="appTitle">
-          <h1>{activeServer ? activeServer.name : "ZapChat"}</h1>
-          <p>{activeServer ? "private lobby" : "sunucu seçilmedi"}</p>
+        <div className="appTitle serverMenuWrap">
+          <button
+            className="serverTitleButton"
+            onClick={() => {
+              if (!activeServer) {
+                return;
+              }
+
+              setServerMenuOpen((previousOpen) => !previousOpen);
+            }}
+            disabled={!activeServer}
+            type="button"
+          >
+            <div>
+              <h1>{activeServer ? activeServer.name : "ZapChat"}</h1>
+              <p>{activeServer ? "private lobby" : "sunucu seçilmedi"}</p>
+            </div>
+            {activeServer && (
+              <span className={serverMenuOpen ? "serverTitleChevron open" : "serverTitleChevron"}>
+                ⌄
+              </span>
+            )}
+          </button>
+
+          {activeServer && serverMenuOpen && (
+            <div className="serverDropdownMenu">
+              <button
+                className="serverDropdownItem disabled"
+                disabled
+                type="button"
+                title="Bu özellik daha sonra eklenecek"
+              >
+                <span>⚙️</span>
+                <div>
+                  <strong>Sunucu Ayarları</strong>
+                  <small>Yakında</small>
+                </div>
+              </button>
+            </div>
+          )}
         </div>
 
         {activeServer && activeServer.inviteCode && (

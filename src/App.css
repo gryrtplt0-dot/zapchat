@@ -71,13 +71,37 @@ input {
 }
 
 .appTitle {
+  position: relative;
   padding-bottom: 18px;
   border-bottom: 1px solid #252a35;
 }
 
+.serverTitleButton {
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: #ffffff;
+  padding: 8px 10px;
+  border-radius: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  text-align: left;
+}
+
+.serverTitleButton:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.serverTitleButton:disabled {
+  cursor: default;
+}
+
 .appTitle h1 {
   margin: 0;
-  font-size: 26px;
+  font-size: 24px;
   letter-spacing: -0.5px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -88,6 +112,74 @@ input {
   margin: 5px 0 0;
   color: #8f96a3;
   font-size: 14px;
+}
+
+.serverTitleButton > div {
+  min-width: 0;
+}
+
+.serverTitleChevron {
+  color: #9aa3b2;
+  font-size: 18px;
+  line-height: 1;
+  flex-shrink: 0;
+  transition: transform 0.18s ease;
+}
+
+.serverTitleChevron.open {
+  transform: rotate(180deg);
+}
+
+.serverDropdownMenu {
+  position: absolute;
+  top: calc(100% - 10px);
+  left: 0;
+  right: 0;
+  padding: 8px;
+  border-radius: 14px;
+  background: #1d212b;
+  border: 1px solid #303644;
+  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.34);
+  z-index: 30;
+}
+
+.serverDropdownItem {
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: #d8dce7;
+  border-radius: 11px;
+  padding: 11px 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+}
+
+.serverDropdownItem span {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.serverDropdownItem strong {
+  display: block;
+  color: #ffffff;
+  font-size: 13px;
+}
+
+.serverDropdownItem small {
+  display: block;
+  margin-top: 2px;
+  color: #8f96a3;
+  font-size: 11px;
+}
+
+.serverDropdownItem.disabled {
+  opacity: 0.72;
+  cursor: not-allowed;
 }
 
 .usernameBox {
