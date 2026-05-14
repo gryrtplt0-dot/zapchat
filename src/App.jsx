@@ -232,6 +232,591 @@ const EMOJI_CATEGORIES = [
   },
 ];
 
+
+const EMOJIBASE_DATA_URL = "https://cdn.jsdelivr.net/npm/emojibase-data@15.3.2/en/compact.json";
+
+const EMOJI_GROUP_CONFIG = [
+  { id: "smileys", label: "İnsanlar", icon: "😀", groups: [0], keywords: ["smile", "smiley", "face", "emotion", "happy", "insan", "yüz"] },
+  { id: "people", label: "Kişiler", icon: "👋", groups: [1], keywords: ["people", "person", "body", "hand", "gesture", "kişi", "el"] },
+  { id: "animals", label: "Doğa", icon: "🐻", groups: [2], keywords: ["animal", "nature", "plant", "hayvan", "doğa"] },
+  { id: "food", label: "Yiyecek", icon: "🍔", groups: [3], keywords: ["food", "drink", "fruit", "yemek", "içecek"] },
+  { id: "travel", label: "Seyahat", icon: "🚗", groups: [4], keywords: ["travel", "place", "vehicle", "car", "seyahat", "araç"] },
+  { id: "activity", label: "Aktivite", icon: "⚽", groups: [5], keywords: ["activity", "sport", "game", "aktivite", "spor", "oyun"] },
+  { id: "objects", label: "Nesneler", icon: "💡", groups: [6], keywords: ["object", "tool", "technology", "office", "nesne", "araç"] },
+  { id: "symbols", label: "Semboller", icon: "❤️", groups: [7], keywords: ["symbol", "heart", "sign", "sembol", "kalp"] },
+  { id: "flags", label: "Bayraklar", icon: "🏳️", groups: [8], keywords: ["flag", "country", "bayrak", "ülke"] },
+];
+
+const FALLBACK_EMOJI_NAMES = {
+  "😀": "grinning face smile happy",
+  "😃": "smiley smiling face happy",
+  "😄": "smile smiling face happy",
+  "😁": "beaming face grin smile happy",
+  "😆": "laughing squinting face xd happy",
+  "😅": "sweat smile nervous laugh",
+  "🤣": "rolling on the floor laughing rofl lmao",
+  "😂": "joy face with tears laughing lol",
+  "🙂": "slightly smiling face smile",
+  "🙃": "upside down face silly",
+  "😉": "wink winking face",
+  "😊": "blush smiling face happy",
+  "😇": "innocent angel halo",
+  "🥰": "smiling face with hearts love",
+  "😍": "heart eyes love crush",
+  "🤩": "star struck excited wow",
+  "😘": "kissing face heart love",
+  "😋": "yum tasty delicious",
+  "😛": "tongue face playful",
+  "😜": "wink tongue silly",
+  "🤪": "zany crazy silly",
+  "🤑": "money mouth rich",
+  "🤗": "hug hugging face",
+  "🤭": "hand over mouth giggle",
+  "🤫": "shushing face quiet",
+  "🤔": "thinking face hmm",
+  "🤐": "zipper mouth secret",
+  "😐": "neutral face",
+  "😑": "expressionless face",
+  "😏": "smirk smirking face",
+  "😒": "unamused annoyed",
+  "🙄": "rolling eyes",
+  "😬": "grimacing face awkward",
+  "😌": "relieved face calm",
+  "😔": "pensive sad",
+  "😪": "sleepy tired",
+  "🤤": "drooling face",
+  "😴": "sleeping face sleep",
+  "😷": "medical mask sick",
+  "🤒": "thermometer sick fever",
+  "🤕": "head bandage hurt",
+  "🤢": "nauseated sick green",
+  "🤮": "vomiting puke sick",
+  "🤧": "sneezing face sick",
+  "🥵": "hot face heat",
+  "🥶": "cold face freezing",
+  "🥴": "woozy face drunk",
+  "😵": "dizzy face dead",
+  "🤯": "exploding head mind blown",
+  "🤠": "cowboy hat face",
+  "🥳": "partying face party birthday",
+  "😎": "sunglasses cool",
+  "🤓": "nerd face glasses",
+  "😕": "confused face",
+  "😟": "worried face",
+  "🙁": "slightly frowning face sad",
+  "☹️": "frowning face sad",
+  "😮": "open mouth surprised",
+  "😲": "astonished shocked",
+  "😳": "flushed embarrassed",
+  "🥺": "pleading face puppy eyes",
+  "😢": "cry crying sad tear",
+  "😭": "sob loudly crying sad",
+  "😱": "scream fear scared",
+  "😖": "confounded frustrated",
+  "😣": "persevering face",
+  "😞": "disappointed sad",
+  "😓": "downcast sweat sad",
+  "😩": "weary tired",
+  "😫": "tired face exhausted",
+  "🥱": "yawning face bored tired",
+  "😤": "triumph steam nose angry",
+  "😡": "rage angry red face",
+  "😠": "angry face mad",
+  "🤬": "cursing face swearing",
+  "😈": "smiling devil horns",
+  "👿": "angry devil demon",
+  "💀": "skull dead",
+  "☠️": "skull and crossbones danger",
+  "💩": "poop pile of poo",
+  "🤡": "clown face",
+  "👻": "ghost spooky",
+  "👽": "alien ufo",
+  "🤖": "robot",
+  "👋": "wave waving hand hello hi",
+  "🤚": "raised back of hand",
+  "🖐️": "hand fingers splayed",
+  "✋": "raised hand high five stop",
+  "👌": "ok hand perfect",
+  "✌️": "victory hand peace",
+  "🤞": "crossed fingers luck",
+  "🤟": "love you gesture",
+  "🤘": "rock on horns",
+  "🤙": "call me hand",
+  "👈": "backhand index pointing left",
+  "👉": "backhand index pointing right",
+  "👆": "pointing up",
+  "👇": "pointing down",
+  "☝️": "index pointing up",
+  "👍": "thumbs up like approve yes",
+  "👎": "thumbs down dislike no",
+  "✊": "raised fist power",
+  "👊": "fist bump punch",
+  "👏": "clapping hands applause clap",
+  "🙌": "raising hands celebrate",
+  "🙏": "folded hands pray thanks please",
+  "💪": "flexed biceps muscle strong",
+  "👀": "eyes looking",
+  "👁️": "eye",
+  "👅": "tongue",
+  "👄": "mouth lips",
+  "🧠": "brain smart",
+  "👶": "baby",
+  "👦": "boy",
+  "👧": "girl",
+  "🧑": "person",
+  "👨": "man",
+  "👩": "woman",
+  "👴": "old man",
+  "👵": "old woman",
+  "👮": "police officer",
+  "🥷": "ninja",
+  "👷": "construction worker",
+  "🤴": "prince king",
+  "👸": "princess queen",
+  "🎅": "santa claus christmas",
+  "🦸": "superhero",
+  "🦹": "supervillain",
+  "🧙": "mage wizard witch",
+  "🧟": "zombie",
+  "🚶": "walking person",
+  "🏃": "running person run",
+  "💃": "woman dancing dance",
+  "🕺": "man dancing dance",
+  "🐶": "dog face puppy",
+  "🐱": "cat face kitten",
+  "🐭": "mouse face",
+  "🐹": "hamster face",
+  "🐰": "rabbit bunny face",
+  "🦊": "fox face",
+  "🐻": "bear face",
+  "🐼": "panda face",
+  "🐨": "koala",
+  "🐯": "tiger face",
+  "🦁": "lion face",
+  "🐮": "cow face",
+  "🐷": "pig face",
+  "🐸": "frog face",
+  "🐵": "monkey face",
+  "🐔": "chicken",
+  "🐧": "penguin",
+  "🐦": "bird",
+  "🦆": "duck",
+  "🦉": "owl",
+  "🐺": "wolf",
+  "🐴": "horse face",
+  "🦄": "unicorn",
+  "🐝": "honeybee bee",
+  "🦋": "butterfly",
+  "🐌": "snail",
+  "🐞": "lady beetle ladybug",
+  "🐜": "ant",
+  "🕷️": "spider",
+  "🐢": "turtle",
+  "🐍": "snake",
+  "🐳": "whale",
+  "🐬": "dolphin",
+  "🐟": "fish",
+  "🐙": "octopus",
+  "🦀": "crab",
+  "🌹": "rose flower",
+  "🌻": "sunflower",
+  "🌼": "blossom flower",
+  "🌷": "tulip flower",
+  "🌲": "evergreen tree",
+  "🌳": "deciduous tree",
+  "🌴": "palm tree",
+  "🌵": "cactus",
+  "🍀": "four leaf clover luck",
+  "🍁": "maple leaf autumn",
+  "🍄": "mushroom",
+  "🍎": "red apple fruit",
+  "🍏": "green apple fruit",
+  "🍌": "banana fruit",
+  "🍉": "watermelon fruit",
+  "🍇": "grapes fruit",
+  "🍓": "strawberry fruit",
+  "🍒": "cherries fruit",
+  "🍑": "peach fruit",
+  "🍍": "pineapple fruit",
+  "🥥": "coconut fruit",
+  "🥑": "avocado",
+  "🍅": "tomato",
+  "🥕": "carrot vegetable",
+  "🌽": "corn vegetable",
+  "🌶️": "hot pepper chili",
+  "🍞": "bread",
+  "🥐": "croissant",
+  "🧀": "cheese",
+  "🍖": "meat on bone",
+  "🍗": "poultry leg chicken",
+  "🥩": "cut of meat steak",
+  "🥓": "bacon",
+  "🍔": "hamburger burger",
+  "🍟": "french fries",
+  "🍕": "pizza",
+  "🌭": "hot dog",
+  "🥪": "sandwich",
+  "🌮": "taco",
+  "🌯": "burrito",
+  "🥚": "egg",
+  "🍳": "cooking fried egg",
+  "🍿": "popcorn",
+  "🍱": "bento box",
+  "🍚": "rice",
+  "🍜": "ramen noodles",
+  "🍝": "spaghetti pasta",
+  "🍣": "sushi",
+  "🍦": "soft ice cream",
+  "🍩": "doughnut donut",
+  "🍪": "cookie",
+  "🎂": "birthday cake",
+  "🍰": "cake shortcake",
+  "🍫": "chocolate bar",
+  "🍬": "candy",
+  "🍭": "lollipop",
+  "☕": "coffee hot beverage",
+  "🍵": "tea",
+  "🍺": "beer mug",
+  "🍷": "wine glass",
+  "🥤": "cup with straw drink",
+  "⚽": "soccer ball football",
+  "🏀": "basketball",
+  "🏈": "american football",
+  "⚾": "baseball",
+  "🎾": "tennis",
+  "🏐": "volleyball",
+  "🎱": "pool 8 ball billiards",
+  "🏓": "ping pong table tennis",
+  "🥊": "boxing glove",
+  "🎮": "video game controller gaming",
+  "🎯": "bullseye target dart",
+  "🎲": "game die dice",
+  "🎤": "microphone sing karaoke",
+  "🎧": "headphone music",
+  "🎸": "guitar music",
+  "🎹": "musical keyboard piano",
+  "🏆": "trophy award winner",
+  "🥇": "gold medal first",
+  "🥈": "silver medal second",
+  "🥉": "bronze medal third",
+  "🚗": "car automobile vehicle",
+  "🚕": "taxi",
+  "🚙": "sport utility vehicle suv",
+  "🚌": "bus",
+  "🚓": "police car",
+  "🚑": "ambulance",
+  "🚒": "fire engine truck",
+  "🚚": "delivery truck",
+  "🚲": "bicycle bike",
+  "🏍️": "motorcycle",
+  "✈️": "airplane plane flight",
+  "🚀": "rocket space",
+  "🛸": "flying saucer ufo",
+  "⛵": "sailboat boat",
+  "🚢": "ship",
+  "🏠": "house home",
+  "🏢": "office building",
+  "🏫": "school",
+  "🏥": "hospital",
+  "🏦": "bank",
+  "🏰": "castle",
+  "🗼": "tokyo tower",
+  "🗽": "statue of liberty",
+  "🌍": "globe europe africa earth world",
+  "🌎": "globe americas earth world",
+  "🌏": "globe asia australia earth world",
+  "💡": "light bulb idea",
+  "🔦": "flashlight",
+  "📱": "mobile phone smartphone",
+  "💻": "laptop computer",
+  "🖥️": "desktop computer",
+  "⌨️": "keyboard",
+  "🖱️": "computer mouse",
+  "📷": "camera",
+  "🎥": "movie camera video",
+  "📺": "television tv",
+  "📚": "books library",
+  "📌": "pushpin pin",
+  "📍": "round pushpin location",
+  "✂️": "scissors cut",
+  "🔒": "locked lock secure",
+  "🔓": "unlocked lock",
+  "🔑": "key",
+  "💰": "money bag cash",
+  "💳": "credit card",
+  "💎": "gem stone diamond",
+  "🔔": "bell notification",
+  "🔇": "muted speaker sound off",
+  "🔊": "speaker high volume sound",
+  "❤️": "red heart love",
+  "🧡": "orange heart love",
+  "💛": "yellow heart love",
+  "💚": "green heart love",
+  "💙": "blue heart love",
+  "💜": "purple heart love",
+  "🖤": "black heart love",
+  "🤍": "white heart love",
+  "🤎": "brown heart love",
+  "💔": "broken heart sad love",
+  "💕": "two hearts love",
+  "💖": "sparkling heart love",
+  "💘": "heart with arrow cupid",
+  "✅": "check mark button yes done",
+  "❌": "cross mark no cancel x",
+  "⭕": "hollow red circle",
+  "💯": "hundred points 100 perfect",
+  "❗": "exclamation mark warning",
+  "❓": "question mark",
+  "⚠️": "warning sign caution",
+  "🚫": "prohibited no entry forbidden",
+  "♻️": "recycling symbol",
+  "🔴": "red circle",
+  "🟠": "orange circle",
+  "🟡": "yellow circle",
+  "🟢": "green circle",
+  "🔵": "blue circle",
+  "🟣": "purple circle",
+  "⚫": "black circle",
+  "⚪": "white circle",
+};
+
+const FLAG_EMOJI_NAMES = {
+  "🇹🇷": "turkey flag tr türkiye bayrak",
+  "🇺🇸": "united states flag us usa america",
+  "🇬🇧": "united kingdom flag gb uk britain england",
+  "🇩🇪": "germany flag de german",
+  "🇫🇷": "france flag fr french",
+  "🇮🇹": "italy flag it italian",
+  "🇪🇸": "spain flag es spanish",
+  "🇵🇹": "portugal flag pt portuguese",
+  "🇳🇱": "netherlands flag nl dutch",
+  "🇧🇪": "belgium flag be",
+  "🇨🇭": "switzerland flag ch swiss",
+  "🇦🇹": "austria flag at",
+  "🇩🇰": "denmark flag dk danish",
+  "🇸🇪": "sweden flag se swedish",
+  "🇳🇴": "norway flag no norwegian",
+  "🇫🇮": "finland flag fi finnish",
+  "🇮🇸": "iceland flag is",
+  "🇮🇪": "ireland flag ie irish",
+  "🇵🇱": "poland flag pl polish",
+  "🇨🇿": "czech republic flag cz",
+  "🇸🇰": "slovakia flag sk",
+  "🇭🇺": "hungary flag hu hungarian",
+  "🇷🇴": "romania flag ro romanian",
+  "🇧🇬": "bulgaria flag bg bulgarian",
+  "🇬🇷": "greece flag gr greek",
+  "🇺🇦": "ukraine flag ua ukrainian",
+  "🇷🇺": "russia flag ru russian",
+  "🇯🇵": "japan flag jp japanese",
+  "🇰🇷": "south korea flag kr korean",
+  "🇨🇳": "china flag cn chinese",
+  "🇮🇳": "india flag in indian",
+  "🇵🇰": "pakistan flag pk pakistani",
+  "🇧🇩": "bangladesh flag bd",
+  "🇮🇩": "indonesia flag id indonesian",
+  "🇲🇾": "malaysia flag my malaysian",
+  "🇸🇬": "singapore flag sg",
+  "🇹🇭": "thailand flag th thai",
+  "🇵🇭": "philippines flag ph filipino",
+  "🇻🇳": "vietnam flag vn vietnamese",
+  "🇦🇺": "australia flag au australian",
+  "🇳🇿": "new zealand flag nz",
+  "🇨🇦": "canada flag ca canadian",
+  "🇲🇽": "mexico flag mx mexican",
+  "🇧🇷": "brazil flag br brazilian",
+  "🇦🇷": "argentina flag ar argentinian",
+  "🇨🇱": "chile flag cl chilean",
+  "🇨🇴": "colombia flag co colombian",
+  "🇵🇪": "peru flag pe peruvian",
+  "🇿🇦": "south africa flag za",
+  "🇪🇬": "egypt flag eg egyptian",
+  "🇲🇦": "morocco flag ma moroccan",
+  "🇳🇬": "nigeria flag ng nigerian",
+  "🇸🇦": "saudi arabia flag sa",
+  "🇦🇪": "united arab emirates flag ae uae",
+  "🇶🇦": "qatar flag qa qatari",
+  "🇮🇱": "israel flag il israeli",
+  "🇮🇷": "iran flag ir iranian",
+  "🇮🇶": "iraq flag iq iraqi",
+  "🇦🇿": "azerbaijan flag az azeri",
+  "🇬🇪": "georgia flag ge georgian",
+  "🇦🇲": "armenia flag am armenian",
+  "🇰🇿": "kazakhstan flag kz kazakh",
+  "🇺🇿": "uzbekistan flag uz uzbek",
+  "🇰🇬": "kyrgyzstan flag kg kyrgyz",
+};
+
+function createEmojiShortcode(value, fallbackName = "emoji") {
+  const rawName = String(fallbackName || FALLBACK_EMOJI_NAMES[value] || FLAG_EMOJI_NAMES[value] || "emoji")
+    .split(/[,;]/)[0]
+    .trim()
+    .toLocaleLowerCase("en-US")
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+
+  return rawName || "emoji";
+}
+
+function createFallbackEmojiItem(emoji, category) {
+  const fallbackName = FLAG_EMOJI_NAMES[emoji] || FALLBACK_EMOJI_NAMES[emoji] || `${category.label} emoji`;
+
+  return {
+    emoji,
+    label: fallbackName.split(/[,;]/)[0],
+    shortcode: createEmojiShortcode(emoji, fallbackName),
+    keywords: [fallbackName, category.label, ...category.keywords],
+  };
+}
+
+function createFallbackEmojiCategories() {
+  return EMOJI_CATEGORIES.map((category) => {
+    return {
+      ...category,
+      emojis: category.emojis.map((emoji) => createFallbackEmojiItem(emoji, category)),
+    };
+  });
+}
+
+function getEmojiGroupId(entry) {
+  if (typeof entry.group === "number") {
+    const matchingGroup = EMOJI_GROUP_CONFIG.find((groupConfig) => {
+      return groupConfig.groups.includes(entry.group);
+    });
+
+    if (matchingGroup) {
+      return matchingGroup.id;
+    }
+  }
+
+  const searchText = [entry.label, entry.annotation, entry.group, entry.subgroup]
+    .filter(Boolean)
+    .join(" ")
+    .toLocaleLowerCase("en-US");
+
+  if (searchText.includes("flag") || searchText.includes("country")) return "flags";
+  if (searchText.includes("symbol") || searchText.includes("sign")) return "symbols";
+  if (searchText.includes("object") || searchText.includes("tool")) return "objects";
+  if (searchText.includes("activity") || searchText.includes("sport")) return "activity";
+  if (searchText.includes("travel") || searchText.includes("place")) return "travel";
+  if (searchText.includes("food") || searchText.includes("drink")) return "food";
+  if (searchText.includes("animal") || searchText.includes("nature")) return "animals";
+  if (searchText.includes("people") || searchText.includes("body") || searchText.includes("person")) return "people";
+
+  return "smileys";
+}
+
+function normalizeExternalEmojiCategories(entries) {
+  if (!Array.isArray(entries) || entries.length === 0) {
+    return [];
+  }
+
+  const categoryMap = new Map(
+    EMOJI_GROUP_CONFIG.map((groupConfig) => [
+      groupConfig.id,
+      {
+        id: groupConfig.id,
+        label: groupConfig.label,
+        icon: groupConfig.icon,
+        keywords: groupConfig.keywords,
+        emojis: [],
+      },
+    ])
+  );
+
+  const seenEmojis = new Set();
+
+  entries.forEach((entry) => {
+    const emoji = entry.emoji || entry.unicode || "";
+
+    if (!emoji || seenEmojis.has(emoji)) {
+      return;
+    }
+
+    seenEmojis.add(emoji);
+
+    const categoryId = getEmojiGroupId(entry);
+    const category = categoryMap.get(categoryId) || categoryMap.get("smileys");
+    const label =
+      entry.label ||
+      entry.annotation ||
+      (Array.isArray(entry.shortcodes) ? entry.shortcodes[0] : "") ||
+      FALLBACK_EMOJI_NAMES[emoji] ||
+      FLAG_EMOJI_NAMES[emoji] ||
+      "emoji";
+    const shortcodes = Array.isArray(entry.shortcodes)
+      ? entry.shortcodes
+      : entry.shortcode
+        ? [entry.shortcode]
+        : [];
+    const tags = Array.isArray(entry.tags) ? entry.tags : [];
+
+    category.emojis.push({
+      emoji,
+      label,
+      shortcode: createEmojiShortcode(emoji, shortcodes[0] || label),
+      keywords: [
+        label,
+        FALLBACK_EMOJI_NAMES[emoji],
+        FLAG_EMOJI_NAMES[emoji],
+        ...shortcodes,
+        ...tags,
+        category.label,
+        ...category.keywords,
+      ].filter(Boolean),
+    });
+  });
+
+  return Array.from(categoryMap.values()).filter((category) => category.emojis.length > 0);
+}
+
+function getEmojiSearchText(emojiItem, category) {
+  return [
+    emojiItem.emoji,
+    emojiItem.label,
+    emojiItem.shortcode,
+    ...(emojiItem.keywords || []),
+    category.label,
+    ...(category.keywords || []),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLocaleLowerCase("en-US");
+}
+
+function isFlagLikeEmoji(emoji) {
+  const codePoints = Array.from(emoji).map((character) => character.codePointAt(0));
+  const regionalIndicatorCount = codePoints.filter((codePoint) => {
+    return codePoint >= 0x1f1e6 && codePoint <= 0x1f1ff;
+  }).length;
+
+  return regionalIndicatorCount >= 2 || emoji.includes("🏳") || emoji.includes("🏴") || emoji.includes("🚩") || emoji.includes("🎌");
+}
+
+function getTwemojiUrl(emoji) {
+  const codePoints = Array.from(emoji).map((character) => character.codePointAt(0).toString(16));
+  return `https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/svg/${codePoints.join("-")}.svg`;
+}
+
+function EmojiGlyph({ emoji }) {
+  const [imageFailed, setImageFailed] = useState(false);
+
+  if (isFlagLikeEmoji(emoji) && !imageFailed) {
+    return (
+      <img
+        className="emojiTwemojiImage"
+        src={getTwemojiUrl(emoji)}
+        alt={emoji}
+        draggable="false"
+        loading="lazy"
+        onError={() => setImageFailed(true)}
+      />
+    );
+  }
+
+  return <span className="emojiNativeGlyph">{emoji}</span>;
+}
+
 const QUICK_GIFS = [
   {
     id: "cat-typing",
@@ -621,6 +1206,10 @@ function App() {
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
   const [emojiSearchText, setEmojiSearchText] = useState("");
   const [activeEmojiCategoryId, setActiveEmojiCategoryId] = useState("smileys");
+  const [externalEmojiCategories, setExternalEmojiCategories] = useState([]);
+  const [emojiDataLoading, setEmojiDataLoading] = useState(false);
+  const [emojiDataError, setEmojiDataError] = useState("");
+  const [hoveredEmojiName, setHoveredEmojiName] = useState("");
   const [gifPickerOpen, setGifPickerOpen] = useState(false);
   const [gifSearchText, setGifSearchText] = useState("");
   const [gifResults, setGifResults] = useState(() => getFallbackGifs(""));
@@ -767,34 +1356,45 @@ function App() {
     textChannels[0]?.name ||
     "genel";
 
+  const fallbackEmojiCategories = useMemo(() => {
+    return createFallbackEmojiCategories();
+  }, []);
+
+  const emojiCategoriesForPicker =
+    externalEmojiCategories.length > 0 ? externalEmojiCategories : fallbackEmojiCategories;
+
   const activeEmojiCategory = useMemo(() => {
     return (
-      EMOJI_CATEGORIES.find((category) => {
+      emojiCategoriesForPicker.find((category) => {
         return category.id === activeEmojiCategoryId;
-      }) || EMOJI_CATEGORIES[0]
+      }) || emojiCategoriesForPicker[0]
     );
-  }, [activeEmojiCategoryId]);
+  }, [activeEmojiCategoryId, emojiCategoriesForPicker]);
 
   const displayedEmojiGroups = useMemo(() => {
-    const cleanSearch = emojiSearchText.trim().toLocaleLowerCase("tr-TR");
+    const cleanSearch = emojiSearchText.trim().toLocaleLowerCase("en-US");
 
     if (!cleanSearch) {
-      return [activeEmojiCategory];
+      return activeEmojiCategory ? [activeEmojiCategory] : [];
     }
 
-    return EMOJI_CATEGORIES.map((category) => {
-      const categoryMatches = [category.label, ...category.keywords].some((value) => {
-        return value.toLocaleLowerCase("tr-TR").includes(cleanSearch);
-      });
+    return emojiCategoriesForPicker
+      .map((category) => {
+        const categoryMatches = [category.label, ...category.keywords].some((value) => {
+          return String(value).toLocaleLowerCase("en-US").includes(cleanSearch);
+        });
 
-      return {
-        ...category,
-        emojis: categoryMatches
-          ? category.emojis
-          : category.emojis.filter((emoji) => emoji.includes(cleanSearch)),
-      };
-    }).filter((category) => category.emojis.length > 0);
-  }, [activeEmojiCategory, emojiSearchText]);
+        return {
+          ...category,
+          emojis: categoryMatches
+            ? category.emojis
+            : category.emojis.filter((emojiItem) => {
+                return getEmojiSearchText(emojiItem, category).includes(cleanSearch);
+              }),
+        };
+      })
+      .filter((category) => category.emojis.length > 0);
+  }, [activeEmojiCategory, emojiCategoriesForPicker, emojiSearchText]);
 
   const filteredMessages = messages.filter(
     (message) => message.channel === activeChannel
@@ -2206,13 +2806,56 @@ function App() {
     };
   }, [gifPickerOpen, gifSearchText]);
 
-  function addEmojiToMessage(emoji) {
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadExternalEmojiData() {
+      setEmojiDataLoading(true);
+      setEmojiDataError("");
+
+      try {
+        const response = await fetch(EMOJIBASE_DATA_URL);
+
+        if (!response.ok) {
+          throw new Error(`Emoji verisi alınamadı: ${response.status}`);
+        }
+
+        const emojiEntries = await response.json();
+        const normalizedCategories = normalizeExternalEmojiCategories(emojiEntries);
+
+        if (!cancelled && normalizedCategories.length > 0) {
+          setExternalEmojiCategories(normalizedCategories);
+        }
+      } catch (error) {
+        console.warn("Harici emoji verisi alınamadı, yedek emoji listesi kullanılacak:", error);
+
+        if (!cancelled) {
+          setEmojiDataError("Emoji verisi alınamadı; yedek liste gösteriliyor.");
+        }
+      } finally {
+        if (!cancelled) {
+          setEmojiDataLoading(false);
+        }
+      }
+    }
+
+    loadExternalEmojiData();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  function addEmojiToMessage(emojiItem) {
+    const emoji = typeof emojiItem === "string" ? emojiItem : emojiItem.emoji;
     setMessageText((previousText) => `${previousText}${emoji}`);
+    setHoveredEmojiName(typeof emojiItem === "string" ? "" : `:${emojiItem.shortcode}:`);
   }
 
   function selectEmojiCategory(categoryId) {
     setActiveEmojiCategoryId(categoryId);
     setEmojiSearchText("");
+    setHoveredEmojiName("");
   }
 
   function toggleEmojiPicker() {
@@ -2221,6 +2864,7 @@ function App() {
 
       if (nextState) {
         setEmojiSearchText("");
+        setHoveredEmojiName("");
       }
 
       return nextState;
@@ -4801,7 +5445,7 @@ function App() {
                   <div className="emojiPickerHeader">
                     <div>
                       <strong>Emoji seç</strong>
-                      <span>Standart emoji kategorileri</span>
+                      <span>{emojiDataLoading ? "Emoji listesi yükleniyor" : "Standart emoji kategorileri"}</span>
                     </div>
                     <button
                       type="button"
@@ -4817,7 +5461,7 @@ function App() {
                       className="emojiPickerSearch"
                       value={emojiSearchText}
                       onChange={(event) => setEmojiSearchText(event.target.value)}
-                      placeholder="Emoji ara: kalp, yüz, yemek..."
+                      placeholder="Emoji ara: smile, heart, food, flag..."
                     />
                     {emojiSearchText && (
                       <button
@@ -4833,7 +5477,7 @@ function App() {
 
                   <div className="emojiPickerBody">
                     <aside className="emojiCategoryRail">
-                      {EMOJI_CATEGORIES.map((category) => (
+                      {emojiCategoriesForPicker.map((category) => (
                         <button
                           className={
                             activeEmojiCategory.id === category.id && !emojiSearchText
@@ -4860,14 +5504,15 @@ function App() {
                           <section className="emojiGroup" key={category.id}>
                             <div className="emojiGroupTitle">{category.label}</div>
                             <div className="emojiGrid">
-                              {category.emojis.map((emoji, emojiIndex) => (
+                              {category.emojis.map((emojiItem, emojiIndex) => (
                                 <button
                                   type="button"
-                                  key={`${category.id}-${emoji}-${emojiIndex}`}
-                                  onClick={() => addEmojiToMessage(emoji)}
-                                  title={emoji}
+                                  key={`${category.id}-${emojiItem.emoji}-${emojiIndex}`}
+                                  onClick={() => addEmojiToMessage(emojiItem)}
+                                  onMouseEnter={() => setHoveredEmojiName(`:${emojiItem.shortcode}:`)}
+                                  title={`${emojiItem.emoji} :${emojiItem.shortcode}:`}
                                 >
-                                  {emoji}
+                                  <EmojiGlyph emoji={emojiItem.emoji} />
                                 </button>
                               ))}
                             </div>
@@ -4878,7 +5523,12 @@ function App() {
                   </div>
 
                   <div className="emojiPickerFooter">
-                    <span>{emojiSearchText ? "Arama sonuçları" : activeEmojiCategory.label}</span>
+                    <span>
+                      {hoveredEmojiName ||
+                        (emojiSearchText
+                          ? "Arama sonuçları"
+                          : emojiDataError || activeEmojiCategory?.label)}
+                    </span>
                   </div>
                 </div>
               )}
