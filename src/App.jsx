@@ -1143,7 +1143,7 @@ function getTimestampMillis(value) {
   return 0;
 }
 
-function RemoteAudio({ stream }) {
+function RemoteAudio({ stream, muted = false }) {
   const audioRef = useRef(null);
 
   useEffect(() => {
@@ -1152,7 +1152,13 @@ function RemoteAudio({ stream }) {
     }
   }, [stream]);
 
-  return <audio ref={audioRef} autoPlay playsInline />;
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.muted = muted;
+    }
+  }, [muted]);
+
+  return <audio ref={audioRef} autoPlay playsInline muted={muted} />;
 }
 
 
@@ -1237,6 +1243,8 @@ function App() {
   const [voiceJoining, setVoiceJoining] = useState(false);
   const [voiceMuted, setVoiceMuted] = useState(false);
   const [voiceServerMuted, setVoiceServerMuted] = useState(false);
+  const [voiceDeafened, setVoiceDeafened] = useState(false);
+  const [voiceServerDeafened, setVoiceServerDeafened] = useState(false);
   const [voiceParticipants, setVoiceParticipants] = useState([]);
   const [voiceStatus, setVoiceStatus] = useState("Sese katılmadın.");
   const [voiceError, setVoiceError] = useState("");
@@ -1268,6 +1276,9 @@ function App() {
   const voiceJoinedRef = useRef(false);
   const voiceMutedRef = useRef(false);
   const voiceServerMutedRef = useRef(false);
+  const voiceDeafenedRef = useRef(false);
+  const voiceServerDeafenedRef = useRef(false);
+  const voiceMutedBeforeDeafenRef = useRef(false);
   const voiceLeaveInProgressRef = useRef(false);
   const screenStreamRef = useRef(null);
   const screenSenderMapRef = useRef(new Map());
@@ -1657,6 +1668,26 @@ function App() {
     voiceMutedRef.current = nextMuted;
     setVoiceMuted(nextMuted);
     setLocalMicrophoneEnabled(!nextMuted && !voiceServerMutedRef.current);
+  }
+
+  function applyVoiceDeafenState(nextDeafened) {
+    voiceDeafenedRef.current = nextDeafened;
+    setVoiceDeafened(nextDeafened);
+  }
+
+  async function updateCurrentVoiceParticipant(fields) {
+    if (!participantDocRef.current) {
+      return;
+    }
+
+    try {
+      await updateDoc(participantDocRef.current, {
+        ...fields,
+        updatedAt: serverTimestamp(),
+      });
+    } catch (error) {
+      console.warn("Ses katılımcısı durumu güncellenemedi:", error);
+    }
   }
 
   function setUserSpeaking(uid, isSpeaking) {
@@ -3144,6 +3175,7 @@ function App() {
         kicked: true,
         online: false,
         voiceServerMuted: false,
+        voiceServerDeafened: false,
         removedAt: serverTimestamp(),
         removedByUid: currentUser.uid,
         updatedAt: serverTimestamp(),
@@ -3689,6 +3721,84 @@ function App() {
     );
   }
 
+  async function toggleServerDeafenParticipant(participant) {
+    if (!isActiveServerOwner || !activeServer || !currentUser || moderationActionLoading) {
+      return;
+    }
+
+    if (!participant?.uid || participant.uid === currentUser.uid) {
+      return;
+    }
+
+    const participantName = participant.displayName || "Guest";
+    const nextServerDeafened = participant.serverDeafened !== true;
+    const shouldChange = confirm(
+      nextServerDeafened
+        ? `${participantName} sunucu tarafından sağırlaştırılsın mı? Kullanıcı sesi duyamayacak ama mikrofonu otomatik kapanmayacak.`
+        : `${participantName} için sağırlaştırmayı kaldırma izni geri verilsin mi?`
+    );
+
+    if (!shouldChange) {
+      return;
+    }
+
+    try {
+      setModerationActionLoading(true);
+      const roomId = getVoiceRoomId(activeServer.id, participant.channelId);
+      const participantRef = doc(
+        db,
+        "voiceRooms",
+        roomId,
+        "participants",
+        participant.uid
+      );
+
+      const memberRef = doc(
+        db,
+        "members",
+        getMemberDocumentId(activeServer.id, participant.uid)
+      );
+
+      if (nextServerDeafened) {
+        await Promise.all([
+          updateDoc(participantRef, {
+            serverDeafened: true,
+            deafened: true,
+            serverDeafenedByUid: currentUser.uid,
+            serverDeafenedAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          }),
+          updateDoc(memberRef, {
+            voiceServerDeafened: true,
+            voiceServerDeafenedByUid: currentUser.uid,
+            voiceServerDeafenedAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          }),
+        ]);
+        return;
+      }
+
+      await Promise.all([
+        updateDoc(participantRef, {
+          serverDeafened: false,
+          serverDeafenedByUid: null,
+          serverUndeafenedAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        }),
+        updateDoc(memberRef, {
+          voiceServerDeafened: false,
+          voiceServerUndeafenedAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        }),
+      ]);
+    } catch (error) {
+      console.error("Sağırlaştırma durumu değiştirilemedi:", error);
+      alert("Sağırlaştırma durumu değiştirilemedi. Firebase bağlantısını kontrol et.");
+    } finally {
+      setModerationActionLoading(false);
+    }
+  }
+
   function stopLocalVoiceStream() {
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach((track) => track.stop());
@@ -3901,6 +4011,10 @@ function App() {
       setScreenShareCollapsed(false);
       setFullscreenScreenShareUid(null);
       setSpeakingUsers({});
+      setVoiceDeafened(false);
+      setVoiceServerDeafened(false);
+      voiceDeafenedRef.current = false;
+      voiceMutedBeforeDeafenRef.current = false;
       setVoiceStatus("Sese katılmadın.");
     }
 
@@ -3913,10 +4027,12 @@ function App() {
       }
     } finally {
       voiceServerMutedRef.current = false;
+      voiceServerDeafenedRef.current = false;
       voiceLeaveInProgressRef.current = false;
 
       if (updateState) {
         setVoiceServerMuted(false);
+        setVoiceServerDeafened(false);
       }
     }
   }
@@ -3959,8 +4075,13 @@ function App() {
         getMemberDocumentId(activeServerId, currentUser.uid)
       );
       const currentMemberSnap = await getDoc(currentMemberRef);
-      const shouldBeServerMuted =
-        currentMemberSnap.exists() && currentMemberSnap.data().voiceServerMuted === true;
+      const currentMemberData = currentMemberSnap.exists() ? currentMemberSnap.data() : {};
+      const shouldBeServerMuted = currentMemberData.voiceServerMuted === true;
+      const shouldBeServerDeafened = currentMemberData.voiceServerDeafened === true;
+
+      voiceDeafenedRef.current = false;
+      setVoiceDeafened(false);
+      voiceMutedBeforeDeafenRef.current = false;
 
       if (shouldBeServerMuted) {
         voiceMutedRef.current = true;
@@ -3968,7 +4089,9 @@ function App() {
       }
 
       voiceServerMutedRef.current = shouldBeServerMuted;
+      voiceServerDeafenedRef.current = shouldBeServerDeafened;
       setVoiceServerMuted(shouldBeServerMuted);
+      setVoiceServerDeafened(shouldBeServerDeafened);
 
       const localStream = await navigator.mediaDevices.getUserMedia({
         audio: {
@@ -4022,6 +4145,9 @@ function App() {
           muted: voiceMutedRef.current || shouldBeServerMuted,
           serverMuted: shouldBeServerMuted,
           serverMutedByUid: shouldBeServerMuted ? "server" : null,
+          deafened: shouldBeServerDeafened,
+          serverDeafened: shouldBeServerDeafened,
+          serverDeafenedByUid: shouldBeServerDeafened ? "server" : null,
           screenSharing: false,
           joinedAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
@@ -4047,6 +4173,11 @@ function App() {
   }
 
   async function toggleVoiceMute() {
+    if (!voiceJoinedRef.current) {
+      setVoiceStatus("Mikrofonu değiştirmek için önce bir ses kanalına katılmalısın.");
+      return;
+    }
+
     if (voiceServerMutedRef.current) {
       setVoiceStatus(
         "Sunucu sahibi mikrofonunu kapattı. Açma izni geri verilene kadar mikrofonu açamazsın."
@@ -4054,20 +4185,53 @@ function App() {
       return;
     }
 
-    const nextMuted = !voiceMuted;
+    const nextMuted = !voiceMutedRef.current;
 
     applyVoiceMuteState(nextMuted);
+    await updateCurrentVoiceParticipant({ muted: nextMuted });
+  }
 
-    if (participantDocRef.current) {
-      try {
-        await updateDoc(participantDocRef.current, {
-          muted: nextMuted,
-          updatedAt: serverTimestamp(),
-        });
-      } catch (error) {
-        console.warn("Mikrofon durumu güncellenemedi:", error);
-      }
+  async function toggleVoiceDeafen() {
+    if (!voiceJoinedRef.current) {
+      setVoiceStatus("Sağırlaştırmayı kullanmak için önce bir ses kanalına katılmalısın.");
+      return;
     }
+
+    if (voiceServerDeafenedRef.current) {
+      setVoiceStatus(
+        "Sunucu sahibi sesi kapattı. İzin geri verilene kadar sesi açamazsın."
+      );
+      return;
+    }
+
+    const nextDeafened = !voiceDeafenedRef.current;
+
+    if (nextDeafened) {
+      voiceMutedBeforeDeafenRef.current = voiceMutedRef.current || voiceServerMutedRef.current;
+      applyVoiceDeafenState(true);
+
+      if (!voiceServerMutedRef.current && !voiceMutedRef.current) {
+        applyVoiceMuteState(true);
+        await updateCurrentVoiceParticipant({ deafened: true, muted: true });
+      } else {
+        await updateCurrentVoiceParticipant({ deafened: true });
+      }
+
+      setVoiceStatus("Sağırlaştırma açıldı.");
+      return;
+    }
+
+    applyVoiceDeafenState(false);
+
+    if (!voiceMutedBeforeDeafenRef.current && !voiceServerMutedRef.current) {
+      applyVoiceMuteState(false);
+      await updateCurrentVoiceParticipant({ deafened: false, muted: false });
+    } else {
+      await updateCurrentVoiceParticipant({ deafened: false });
+    }
+
+    voiceMutedBeforeDeafenRef.current = false;
+    setVoiceStatus("Sağırlaştırma kapatıldı.");
   }
 
   useEffect(() => {
@@ -4516,9 +4680,12 @@ function App() {
 
         const participantData = snapshot.data();
         const nextServerMuted = participantData.serverMuted === true;
+        const nextServerDeafened = participantData.serverDeafened === true;
 
         voiceServerMutedRef.current = nextServerMuted;
+        voiceServerDeafenedRef.current = nextServerDeafened;
         setVoiceServerMuted(nextServerMuted);
+        setVoiceServerDeafened(nextServerDeafened);
 
         if (nextServerMuted) {
           voiceMutedRef.current = true;
@@ -4526,6 +4693,10 @@ function App() {
           setLocalMicrophoneEnabled(false);
           setVoiceStatus("Sunucu sahibi mikrofonunu kapattı.");
           return;
+        }
+
+        if (nextServerDeafened) {
+          setVoiceStatus("Sunucu sahibi sesi kapattı.");
         }
 
         setLocalMicrophoneEnabled(!voiceMutedRef.current);
@@ -4541,6 +4712,14 @@ function App() {
   useEffect(() => {
     voiceMutedRef.current = voiceMuted;
   }, [voiceMuted]);
+
+  useEffect(() => {
+    voiceDeafenedRef.current = voiceDeafened;
+  }, [voiceDeafened]);
+
+  useEffect(() => {
+    voiceServerDeafenedRef.current = voiceServerDeafened;
+  }, [voiceServerDeafened]);
 
   useEffect(() => {
     if (!voiceJoinedRef.current) {
@@ -4770,21 +4949,32 @@ function App() {
           {channelParticipants.map((participant) => {
             const isCurrentUser = participant.uid === currentUser.uid;
             const effectiveMuted = participant.serverMuted || participant.muted;
+            const effectiveDeafened = participant.serverDeafened || participant.deafened;
             const isSpeaking = speakingUsers[participant.uid] && !effectiveMuted;
             const canModerateVoiceParticipant = isActiveServerOwner && !isCurrentUser;
-            const participantStatus = participant.serverMuted
-              ? "Sunucu tarafından susturuldu"
-              : participant.screenSharing
-                ? effectiveMuted
-                  ? "Ekran paylaşıyor · mikrofon kapalı"
-                  : isSpeaking
-                    ? "Ekran paylaşıyor · konuşuyor"
-                    : "Ekran paylaşıyor"
-                : effectiveMuted
-                  ? "Mikrofon kapalı"
-                  : isSpeaking
-                    ? "Konuşuyor"
-                    : "Sessiz";
+            let participantStatus = "Sessiz";
+
+            if (participant.serverMuted) {
+              participantStatus = "Sunucu tarafından susturuldu";
+            } else if (participant.serverDeafened) {
+              participantStatus = "Sunucu tarafından sağırlaştırıldı";
+            } else if (participant.screenSharing && effectiveMuted) {
+              participantStatus = "Ekran paylaşıyor · mikrofon kapalı";
+            } else if (participant.screenSharing && effectiveDeafened) {
+              participantStatus = "Ekran paylaşıyor · sağırlaştırılmış";
+            } else if (participant.screenSharing && isSpeaking) {
+              participantStatus = "Ekran paylaşıyor · konuşuyor";
+            } else if (participant.screenSharing) {
+              participantStatus = "Ekran paylaşıyor";
+            } else if (effectiveDeafened && effectiveMuted) {
+              participantStatus = "Sağırlaştırılmış · mikrofon kapalı";
+            } else if (effectiveDeafened) {
+              participantStatus = "Sağırlaştırılmış";
+            } else if (effectiveMuted) {
+              participantStatus = "Mikrofon kapalı";
+            } else if (isSpeaking) {
+              participantStatus = "Konuşuyor";
+            }
 
             return (
               <div
@@ -4814,13 +5004,17 @@ function App() {
                 <span className="voiceParticipantIcon">
                   {participant.serverMuted
                     ? "⛔"
-                    : participant.screenSharing
-                      ? "🖥️"
-                      : effectiveMuted
-                        ? "🔇"
-                        : isSpeaking
-                          ? "🟢"
-                          : "🎙️"}
+                    : participant.serverDeafened
+                      ? "🔕"
+                      : participant.screenSharing
+                        ? "🖥️"
+                        : effectiveDeafened
+                          ? "🎧"
+                          : effectiveMuted
+                            ? "🔇"
+                            : isSpeaking
+                              ? "🟢"
+                              : "🎙️"}
                 </span>
 
                 {canModerateVoiceParticipant && (
@@ -4843,6 +5037,23 @@ function App() {
                     </button>
 
                     <button
+                      className={
+                        participant.serverDeafened
+                          ? "voiceModButton undeafen"
+                          : "voiceModButton deafen"
+                      }
+                      onClick={() => toggleServerDeafenParticipant(participant)}
+                      disabled={moderationActionLoading}
+                      title={
+                        participant.serverDeafened
+                          ? "Sağırlaştırmayı kaldırma iznini geri ver"
+                          : "Kullanıcıyı sunucu tarafından sağırlaştır"
+                      }
+                    >
+                      {participant.serverDeafened ? "Duyur" : "Sağırlaştır"}
+                    </button>
+
+                    <button
                       className="voiceModButton kick"
                       onClick={() => kickVoiceParticipant(participant)}
                       disabled={moderationActionLoading}
@@ -4857,93 +5068,135 @@ function App() {
           })}
         </div>
 
-        {isCurrentVoiceChannel && (
-          <div className="voiceActions">
-            <button
-              className={
-                voiceServerMuted || voiceMuted
-                  ? "voiceMuteButton voiceIconButton muted"
-                  : "voiceMuteButton voiceIconButton"
-              }
-              onClick={toggleVoiceMute}
-              disabled={voiceServerMuted}
-              title={
-                voiceServerMuted
-                  ? "Sunucu sahibi mikrofonunu kapattı. Açma izni verilince tekrar açabilirsin."
-                  : voiceMuted
-                    ? "Mikrofonu aç"
-                    : "Mikrofonu kapat"
-              }
-              aria-label={
-                voiceServerMuted
-                  ? "Sunucu sahibi tarafından susturuldun"
-                  : voiceMuted
-                    ? "Mikrofonu aç"
-                    : "Mikrofonu kapat"
-              }
-            >
-              <span className="voiceActionIcon">
-                {voiceServerMuted ? "⛔" : voiceMuted ? "🔇" : "🎤"}
-              </span>
-            </button>
+        {isCurrentVoiceChannel && voiceJoined && remoteStreams.length > 0 && (
+          <div className="voiceRemoteCount">
+            {remoteStreams.length} uzak ses bağlantısı aktif.
+          </div>
+        )}
+      </div>
+    );
+  }
 
-            <button
-              className={
-                screenSharing
-                  ? "screenShareButton voiceIconButton active"
-                  : "screenShareButton voiceIconButton"
-              }
-              onClick={() => {
-                if (screenSharing) {
-                  stopScreenShare();
-                  return;
-                }
+  function renderVoiceControlDock() {
+    const activeVoiceChannel = voiceChannels.find((channel) => {
+      return channel.id === activeVoiceChannelId;
+    });
+    const effectiveMuted = voiceServerMuted || voiceMuted;
+    const effectiveDeafened = voiceServerDeafened || voiceDeafened;
+    const voiceDockStatus = voiceJoined
+      ? voiceStatus ||
+        (voiceServerDeafened
+          ? "Sunucu tarafından sağırlaştırıldın"
+          : voiceDeafened
+            ? "Sağırlaştırılmış"
+            : voiceServerMuted
+              ? "Sunucu tarafından susturuldun"
+              : effectiveMuted
+                ? "Mikrofon kapalı"
+                : "Sesli aramada")
+      : "Sese katılmadın";
 
-                startScreenShare();
-              }}
-              disabled={screenShareStarting}
-              title={
-                screenShareStarting
-                  ? "Ekran paylaşımı başlatılıyor"
-                  : screenSharing
-                    ? "Ekran paylaşımını durdur"
-                    : "Ekranı paylaş"
-              }
-              aria-label={
-                screenShareStarting
-                  ? "Ekran paylaşımı başlatılıyor"
-                  : screenSharing
-                    ? "Ekran paylaşımını durdur"
-                    : "Ekranı paylaş"
-              }
-            >
-              <span className="voiceActionIcon">
-                {screenShareStarting ? "…" : "🖥️"}
-              </span>
-            </button>
-
-            <button
-              className="voiceLeaveButton voiceIconButton leave"
-              onClick={() => leaveVoiceRoom()}
-              title="Sesten ayrıl"
-              aria-label="Sesten ayrıl"
-            >
-              <span className="voiceActionIcon">📞</span>
-            </button>
+    return (
+      <div className={voiceJoined ? "voiceDock connected" : "voiceDock"}>
+        {voiceJoined && (
+          <div className="voiceDockConnection">
+            <span className="voiceDockSignal">≋</span>
+            <div>
+              <strong>{activeVoiceChannel?.name || "Sesli Sohbet"}</strong>
+              <span>{voiceDockStatus}</span>
+            </div>
           </div>
         )}
 
-        {isCurrentVoiceChannel && (
-          <>
-            <p className="voiceStatusText">{voiceStatus}</p>
+        <div className="voiceDockUserRow">
+          <div className="voiceDockUser">
+            <div className="voiceDockAvatar">{getUserInitial(username)}</div>
+            <div>
+              <strong>{username.trim() || "Guest"}</strong>
+              <span>{voiceDockStatus}</span>
+            </div>
+          </div>
 
-            {voiceJoined && remoteStreams.length > 0 && (
-              <div className="voiceRemoteCount">
-                {remoteStreams.length} uzak ses bağlantısı aktif.
-              </div>
+          <div className="voiceDockControls">
+            <button
+              className={
+                effectiveMuted
+                  ? "voiceDockButton active danger"
+                  : "voiceDockButton"
+              }
+              onClick={toggleVoiceMute}
+              disabled={!voiceJoined || voiceServerMuted}
+              title={
+                !voiceJoined
+                  ? "Önce ses kanalına katıl"
+                  : voiceServerMuted
+                    ? "Sunucu sahibi mikrofonunu kapattı"
+                    : effectiveMuted
+                      ? "Mikrofonu aç"
+                      : "Mikrofonu kapat"
+              }
+              type="button"
+            >
+              {voiceServerMuted ? "⛔" : effectiveMuted ? "🔇" : "🎙️"}
+            </button>
+
+            <button
+              className={
+                effectiveDeafened
+                  ? "voiceDockButton active"
+                  : "voiceDockButton"
+              }
+              onClick={toggleVoiceDeafen}
+              disabled={!voiceJoined || voiceServerDeafened}
+              title={
+                !voiceJoined
+                  ? "Önce ses kanalına katıl"
+                  : voiceServerDeafened
+                    ? "Sunucu sahibi sesi kapattı"
+                    : effectiveDeafened
+                      ? "Sağırlaştırmayı kapat"
+                      : "Sağırlaştır"
+              }
+              type="button"
+            >
+              {voiceServerDeafened ? "🔕" : "🎧"}
+            </button>
+
+            {voiceJoined && (
+              <button
+                className={
+                  screenSharing
+                    ? "voiceDockButton active screen"
+                    : "voiceDockButton screen"
+                }
+                onClick={() => {
+                  if (screenSharing) {
+                    stopScreenShare();
+                    return;
+                  }
+
+                  startScreenShare();
+                }}
+                disabled={screenShareStarting}
+                title={screenSharing ? "Ekran paylaşımını durdur" : "Ekranı paylaş"}
+                type="button"
+              >
+                {screenShareStarting ? "…" : "🖥️"}
+              </button>
             )}
-          </>
-        )}
+
+            {voiceJoined && (
+              <button
+                className="voiceDockButton leave"
+                onClick={() => leaveVoiceRoom()}
+                title="Sesten ayrıl"
+                type="button"
+              >
+                📞
+              </button>
+            )}
+          </div>
+        </div>
       </div>
     );
   }
@@ -5181,6 +5434,8 @@ function App() {
             Bir sunucuya katılın ya da sunucu oluşturun.
           </div>
         )}
+
+        {renderVoiceControlDock()}
       </aside>
 
       <main className="chatArea">
@@ -5711,6 +5966,7 @@ function App() {
           <RemoteAudio
             key={remoteStream.uid}
             stream={remoteStream.stream}
+            muted={voiceDeafened || voiceServerDeafened}
           />
         ))}
       </div>
