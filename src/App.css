@@ -1353,6 +1353,7 @@ input {
   overflow: hidden;
   border: 1px solid #252a35;
   background: #10131a;
+  display: block;
   border-radius: 13px;
   padding: 0;
   cursor: pointer;
@@ -1365,20 +1366,6 @@ input {
   display: block;
   filter: saturate(0.95);
   transition: transform 0.18s ease, filter 0.18s ease;
-}
-
-.gifPickerCard span {
-  position: absolute;
-  left: 9px;
-  right: 9px;
-  bottom: 8px;
-  color: #ffffff;
-  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.85);
-  font-size: 12px;
-  font-weight: 900;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .gifPickerCard:hover {

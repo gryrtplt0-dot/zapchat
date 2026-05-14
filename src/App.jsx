@@ -2032,24 +2032,50 @@ function App() {
     setEmojiPickerOpen(false);
   }
 
-  function addGifFromPicker(gif) {
-    setGifAttachments((previousGifs) => [
-      ...previousGifs,
-      {
-        id: `${Date.now()}_${gif.id}_${Math.random().toString(36).slice(2)}`,
-        name: gif.title || "GIF",
-        url: gif.url,
-        previewUrl: gif.previewUrl || gif.url,
-        contentType: gif.url.toLowerCase().includes(".webp")
-          ? "image/webp"
-          : "image/gif",
-        size: 0,
-        type: "gif",
-        source: "picker",
-      },
-    ]);
-    setGifPickerOpen(false);
-    setGifSearchText("");
+  async function sendGifFromPicker(gif) {
+    if (!gif || !currentUser || !activeServerId || isSending) {
+      return;
+    }
+
+    const cleanUsername = username.trim() || "Guest";
+    const gifAttachment = {
+      id: `gif_${gif.id || gif.url || "selected"}`,
+      name: gif.title || "GIF",
+      url: gif.url,
+      previewUrl: gif.previewUrl || gif.url,
+      contentType: gif.url.toLowerCase().includes(".webp")
+        ? "image/webp"
+        : "image/gif",
+      size: 0,
+      type: "gif",
+      source: "picker",
+    };
+
+    try {
+      setIsSending(true);
+      setGifPickerOpen(false);
+      setEmojiPickerOpen(false);
+
+      await addDoc(collection(db, "messages"), {
+        serverId: activeServerId,
+        channel: activeChannel,
+        user: cleanUsername,
+        email: currentUser.email,
+        uid: currentUser.uid,
+        text: "",
+        attachments: [gifAttachment],
+        time: getCurrentTime(),
+        createdAt: serverTimestamp(),
+      });
+
+      setGifSearchText("");
+      setGifError("");
+    } catch (error) {
+      console.error("GIF gönderilemedi:", error);
+      alert("GIF gönderilemedi. Firebase/Firestore bağlantısını kontrol et.");
+    } finally {
+      setIsSending(false);
+    }
   }
 
   function removeGifAttachment(gifId) {
@@ -4648,15 +4674,14 @@ function App() {
                           className="gifPickerCard"
                           type="button"
                           key={gif.id}
-                          onClick={() => addGifFromPicker(gif)}
-                          title={`${gif.title} GIF ekle`}
+                          onClick={() => sendGifFromPicker(gif)}
+                          title={`${gif.title} GIF gönder`}
                         >
                           <img
                             src={gif.previewUrl || gif.url}
                             alt={gif.title}
                             loading="lazy"
                           />
-                          <span>{gif.title}</span>
                         </button>
                       ))}
 
