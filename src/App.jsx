@@ -43,27 +43,193 @@ const TENOR_API_KEY = import.meta.env.VITE_TENOR_API_KEY || "";
 const GIF_RESULT_LIMIT = 24;
 const GIF_SEARCH_DEBOUNCE_MS = 450;
 const GIF_CLIENT_KEY = "zapchat";
-const QUICK_EMOJIS = [
-  "😀",
-  "😂",
-  "🤣",
-  "😊",
-  "😍",
-  "😎",
-  "😭",
-  "😡",
-  "👍",
-  "👎",
-  "🔥",
-  "💀",
-  "🎉",
-  "❤️",
-  "💙",
-  "✅",
-  "❌",
-  "👀",
-  "🙏",
-  "🤝",
+const EMOJI_CATEGORIES = [
+  {
+    id: "smileys",
+    label: "İnsanlar",
+    icon: "😀",
+    keywords: ["smile", "face", "insan", "yüz", "mutlu", "duygu"],
+    emojis: [
+      "😀", "😃", "😄", "😁", "😆", "😅", "🤣", "😂", "🙂", "🙃", "🫠", "😉",
+      "😊", "😇", "🥰", "😍", "🤩", "😘", "😗", "☺️", "😚", "😙", "🥲", "😋",
+      "😛", "😜", "🤪", "😝", "🤑", "🤗", "🤭", "🫢", "🫣", "🤫", "🤔", "🫡",
+      "🤐", "🤨", "😐", "😑", "😶", "🫥", "😶‍🌫️", "😏", "😒", "🙄", "😬", "😮‍💨",
+      "🤥", "😌", "😔", "😪", "🤤", "😴", "😷", "🤒", "🤕", "🤢", "🤮", "🤧",
+      "🥵", "🥶", "🥴", "😵", "😵‍💫", "🤯", "🤠", "🥳", "🥸", "😎", "🤓", "🧐",
+      "😕", "🫤", "😟", "🙁", "☹️", "😮", "😯", "😲", "😳", "🥺", "🥹", "😦",
+      "😧", "😨", "😰", "😥", "😢", "😭", "😱", "😖", "😣", "😞", "😓", "😩",
+      "😫", "🥱", "😤", "😡", "😠", "🤬", "😈", "👿", "💀", "☠️", "💩", "🤡",
+      "👹", "👺", "👻", "👽", "👾", "🤖", "😺", "😸", "😹", "😻", "😼", "😽",
+      "🙀", "😿", "😾", "🙈", "🙉", "🙊"
+    ],
+  },
+  {
+    id: "people",
+    label: "Kişiler",
+    icon: "👋",
+    keywords: ["people", "hand", "person", "kişi", "el", "vücut"],
+    emojis: [
+      "👋", "🤚", "🖐️", "✋", "🖖", "🫱", "🫲", "🫳", "🫴", "👌", "🤌", "🤏",
+      "✌️", "🤞", "🫰", "🤟", "🤘", "🤙", "👈", "👉", "👆", "🖕", "👇", "☝️",
+      "🫵", "👍", "👎", "✊", "👊", "🤛", "🤜", "👏", "🙌", "🫶", "👐", "🤲",
+      "🤝", "🙏", "✍️", "💅", "🤳", "💪", "🦾", "🦿", "🦵", "🦶", "👂", "🦻",
+      "👃", "🧠", "🫀", "🫁", "🦷", "🦴", "👀", "👁️", "👅", "👄", "🫦", "👶",
+      "🧒", "👦", "👧", "🧑", "👱", "👨", "🧔", "👩", "🧓", "👴", "👵", "🙍",
+      "🙎", "🙅", "🙆", "💁", "🙋", "🧏", "🙇", "🤦", "🤷", "👮", "🕵️", "💂",
+      "🥷", "👷", "🫅", "🤴", "👸", "👳", "👲", "🧕", "🤵", "👰", "🤰", "🫃",
+      "🫄", "🤱", "👼", "🎅", "🤶", "🦸", "🦹", "🧙", "🧚", "🧛", "🧜", "🧝",
+      "🧞", "🧟", "🧌", "💆", "💇", "🚶", "🧍", "🧎", "🏃", "💃", "🕺", "🕴️",
+      "👯", "🧖", "🧗", "🧘", "🛀", "🛌"
+    ],
+  },
+  {
+    id: "animals",
+    label: "Doğa",
+    icon: "🐻",
+    keywords: ["animal", "nature", "hayvan", "doğa", "bitki"],
+    emojis: [
+      "🐵", "🐒", "🦍", "🦧", "🐶", "🐕", "🦮", "🐕‍🦺", "🐩", "🐺", "🦊", "🦝",
+      "🐱", "🐈", "🐈‍⬛", "🦁", "🐯", "🐅", "🐆", "🐴", "🫎", "🫏", "🐎", "🦄",
+      "🦓", "🦌", "🦬", "🐮", "🐂", "🐃", "🐄", "🐷", "🐖", "🐗", "🐽", "🐏",
+      "🐑", "🐐", "🐪", "🐫", "🦙", "🦒", "🐘", "🦣", "🦏", "🦛", "🐭", "🐁",
+      "🐀", "🐹", "🐰", "🐇", "🐿️", "🦫", "🦔", "🦇", "🐻", "🐻‍❄️", "🐨", "🐼",
+      "🦥", "🦦", "🦨", "🦘", "🦡", "🐾", "🦃", "🐔", "🐓", "🐣", "🐤", "🐥",
+      "🐦", "🐧", "🕊️", "🦅", "🦆", "🦢", "🦉", "🦤", "🪶", "🦩", "🦚", "🦜",
+      "🪽", "🐦‍⬛", "🪿", "🐸", "🐊", "🐢", "🦎", "🐍", "🐲", "🐉", "🦕", "🦖",
+      "🐳", "🐋", "🐬", "🦭", "🐟", "🐠", "🐡", "🦈", "🐙", "🐚", "🪸", "🪼",
+      "🐌", "🦋", "🐛", "🐜", "🐝", "🪲", "🐞", "🦗", "🪳", "🕷️", "🕸️", "🦂",
+      "🦟", "🪰", "🪱", "🦠", "💐", "🌸", "💮", "🪷", "🏵️", "🌹", "🥀", "🌺",
+      "🌻", "🌼", "🌷", "🪻", "🌱", "🪴", "🌲", "🌳", "🌴", "🌵", "🌾", "🌿",
+      "☘️", "🍀", "🍁", "🍂", "🍃", "🪹", "🪺", "🍄", "🌰", "🦀", "🦞", "🦐"
+    ],
+  },
+  {
+    id: "food",
+    label: "Yiyecek",
+    icon: "🍔",
+    keywords: ["food", "drink", "yemek", "içecek", "meyve"],
+    emojis: [
+      "🍇", "🍈", "🍉", "🍊", "🍋", "🍌", "🍍", "🥭", "🍎", "🍏", "🍐", "🍑",
+      "🍒", "🍓", "🫐", "🥝", "🍅", "🫒", "🥥", "🥑", "🍆", "🥔", "🥕", "🌽",
+      "🌶️", "🫑", "🥒", "🥬", "🥦", "🧄", "🧅", "🥜", "🫘", "🌰", "🫚", "🫛",
+      "🍞", "🥐", "🥖", "🫓", "🥨", "🥯", "🥞", "🧇", "🧀", "🍖", "🍗", "🥩",
+      "🥓", "🍔", "🍟", "🍕", "🌭", "🥪", "🌮", "🌯", "🫔", "🥙", "🧆", "🥚",
+      "🍳", "🥘", "🍲", "🫕", "🥣", "🥗", "🍿", "🧈", "🧂", "🥫", "🍱", "🍘",
+      "🍙", "🍚", "🍛", "🍜", "🍝", "🍠", "🍢", "🍣", "🍤", "🍥", "🥮", "🍡",
+      "🥟", "🥠", "🥡", "🦪", "🍦", "🍧", "🍨", "🍩", "🍪", "🎂", "🍰", "🧁",
+      "🥧", "🍫", "🍬", "🍭", "🍮", "🍯", "🍼", "🥛", "☕", "🫖", "🍵", "🍶",
+      "🍾", "🍷", "🍸", "🍹", "🍺", "🍻", "🥂", "🥃", "🫗", "🥤", "🧋", "🧃",
+      "🧉", "🧊", "🥢", "🍽️", "🍴", "🥄", "🔪", "🫙", "🏺"
+    ],
+  },
+  {
+    id: "activity",
+    label: "Aktivite",
+    icon: "⚽",
+    keywords: ["activity", "sport", "game", "aktivite", "oyun", "spor"],
+    emojis: [
+      "⚽", "🏀", "🏈", "⚾", "🥎", "🎾", "🏐", "🏉", "🥏", "🎱", "🪀", "🏓",
+      "🏸", "🏒", "🏑", "🥍", "🏏", "🪃", "🥅", "⛳", "🪁", "🏹", "🎣", "🤿",
+      "🥊", "🥋", "🎽", "🛹", "🛼", "🛷", "⛸️", "🥌", "🎿", "⛷️", "🏂", "🪂",
+      "🏋️", "🤼", "🤸", "⛹️", "🤺", "🤾", "🏌️", "🏇", "🧘", "🏄", "🏊", "🤽",
+      "🚣", "🧗", "🚵", "🚴", "🏆", "🥇", "🥈", "🥉", "🏅", "🎖️", "🏵️", "🎗️",
+      "🎫", "🎟️", "🎪", "🤹", "🎭", "🩰", "🎨", "🎬", "🎤", "🎧", "🎼", "🎹",
+      "🥁", "🪘", "🎷", "🎺", "🪗", "🎸", "🪕", "🎻", "🪈", "🎲", "♟️", "🎯",
+      "🎳", "🎮", "🎰", "🧩", "🧸", "🪅", "🪩", "🪆", "♥️", "♦️", "♣️", "♠️",
+      "🃏", "🀄", "🎴", "🎁", "🎈", "🎏", "🎀", "🧧", "🎊", "🎉"
+    ],
+  },
+  {
+    id: "travel",
+    label: "Seyahat",
+    icon: "🚗",
+    keywords: ["travel", "place", "vehicle", "seyahat", "yer", "araç"],
+    emojis: [
+      "🌍", "🌎", "🌏", "🌐", "🗺️", "🗾", "🧭", "🏔️", "⛰️", "🌋", "🗻", "🏕️",
+      "🏖️", "🏜️", "🏝️", "🏞️", "🏟️", "🏛️", "🏗️", "🧱", "🪨", "🪵", "🛖", "🏘️",
+      "🏚️", "🏠", "🏡", "🏢", "🏣", "🏤", "🏥", "🏦", "🏨", "🏩", "🏪", "🏫",
+      "🏬", "🏭", "🏯", "🏰", "💒", "🗼", "🗽", "⛪", "🕌", "🛕", "🕍", "⛩️",
+      "🕋", "⛲", "⛺", "🌁", "🌃", "🏙️", "🌄", "🌅", "🌆", "🌇", "🌉", "♨️",
+      "🎠", "🛝", "🎡", "🎢", "💈", "🎪", "🚂", "🚃", "🚄", "🚅", "🚆", "🚇",
+      "🚈", "🚉", "🚊", "🚝", "🚞", "🚋", "🚌", "🚍", "🚎", "🚐", "🚑", "🚒",
+      "🚓", "🚔", "🚕", "🚖", "🚗", "🚘", "🚙", "🛻", "🚚", "🚛", "🚜", "🏎️",
+      "🏍️", "🛵", "🦽", "🦼", "🛺", "🚲", "🛴", "🛹", "🛼", "🚏", "🛣️", "🛤️",
+      "🛢️", "⛽", "🛞", "🚨", "🚥", "🚦", "🛑", "🚧", "⚓", "🛟", "⛵", "🛶",
+      "🚤", "🛳️", "⛴️", "🛥️", "🚢", "✈️", "🛩️", "🛫", "🛬", "🪂", "💺", "🚁",
+      "🚟", "🚠", "🚡", "🛰️", "🚀", "🛸", "🛎️", "🧳", "⌛", "⏳", "⌚", "⏰"
+    ],
+  },
+  {
+    id: "objects",
+    label: "Nesneler",
+    icon: "💡",
+    keywords: ["object", "tool", "nesne", "araç", "ofis", "teknoloji"],
+    emojis: [
+      "💌", "💣", "🛀", "🛌", "🔪", "🏺", "🗺️", "🧭", "🧱", "💈", "🛢️", "🛎️",
+      "🧳", "⌛", "⏳", "⌚", "⏰", "⏱️", "⏲️", "🕰️", "🌡️", "⛱️", "🧨", "🎈",
+      "🎉", "🎊", "🎎", "🎏", "🎐", "🧧", "🎀", "🎁", "🤿", "🪀", "🪁", "🔮",
+      "🪄", "🧿", "🪬", "🎮", "🕹️", "🎰", "🎲", "🧩", "🧸", "🪅", "🪩", "🪆",
+      "🖼️", "🎨", "🧵", "🪡", "🧶", "🪢", "👓", "🕶️", "🥽", "🥼", "🦺", "👔",
+      "👕", "👖", "🧣", "🧤", "🧥", "🧦", "👗", "🥻", "🩱", "🩲", "🩳", "👙",
+      "👚", "🪭", "👛", "👜", "👝", "🛍️", "🎒", "🩴", "👞", "👟", "🥾", "🥿",
+      "👠", "👡", "🩰", "👢", "🪮", "👑", "👒", "🎩", "🎓", "🧢", "🪖", "⛑️",
+      "📿", "💄", "💍", "💎", "🔇", "🔈", "🔉", "🔊", "📢", "📣", "📯", "🔔",
+      "🔕", "🎼", "🎵", "🎶", "🎙️", "🎚️", "🎛️", "🎤", "🎧", "📻", "🎷", "🪗",
+      "🎸", "🎹", "🎺", "🎻", "🪕", "🥁", "🪘", "🪈", "📱", "📲", "☎️", "📞",
+      "📟", "📠", "🔋", "🪫", "🔌", "💻", "🖥️", "🖨️", "⌨️", "🖱️", "🖲️", "💽",
+      "💾", "💿", "📀", "🧮", "🎥", "🎞️", "📽️", "🎬", "📺", "📷", "📸", "📹",
+      "📼", "🔍", "🔎", "🕯️", "💡", "🔦", "🏮", "🪔", "📔", "📕", "📖", "📗",
+      "📘", "📙", "📚", "📓", "📒", "📃", "📜", "📄", "📰", "🗞️", "📑", "🔖",
+      "🏷️", "💰", "🪙", "💴", "💵", "💶", "💷", "💸", "💳", "🧾", "💹", "✉️",
+      "📧", "📨", "📩", "📤", "📥", "📦", "📫", "📪", "📬", "📭", "📮", "🗳️",
+      "✏️", "✒️", "🖋️", "🖊️", "🖌️", "🖍️", "📝", "💼", "📁", "📂", "🗂️", "📅",
+      "📆", "🗒️", "🗓️", "📇", "📈", "📉", "📊", "📋", "📌", "📍", "📎", "🖇️",
+      "📏", "📐", "✂️", "🗃️", "🗄️", "🗑️", "🔒", "🔓", "🔏", "🔐", "🔑", "🗝️"
+    ],
+  },
+  {
+    id: "symbols",
+    label: "Semboller",
+    icon: "❤️",
+    keywords: ["symbol", "heart", "sembol", "kalp", "işaret"],
+    emojis: [
+      "❤️", "🧡", "💛", "💚", "💙", "💜", "🖤", "🩶", "🤍", "🤎", "💔", "❤️‍🔥",
+      "❤️‍🩹", "❣️", "💕", "💞", "💓", "💗", "💖", "💘", "💝", "💟", "☮️", "✝️",
+      "☪️", "🕉️", "☸️", "✡️", "🔯", "🕎", "☯️", "☦️", "🛐", "⛎", "♈", "♉",
+      "♊", "♋", "♌", "♍", "♎", "♏", "♐", "♑", "♒", "♓", "🆔", "⚛️",
+      "🉑", "☢️", "☣️", "📴", "📳", "🈶", "🈚", "🈸", "🈺", "🈷️", "✴️", "🆚",
+      "💮", "🉐", "㊙️", "㊗️", "🈴", "🈵", "🈹", "🈲", "🅰️", "🅱️", "🆎", "🆑",
+      "🅾️", "🆘", "❌", "⭕", "🛑", "⛔", "📛", "🚫", "💯", "💢", "♨️", "🚷",
+      "🚯", "🚳", "🚱", "🔞", "📵", "🚭", "❗", "❕", "❓", "❔", "‼️", "⁉️",
+      "🔅", "🔆", "〽️", "⚠️", "🚸", "🔱", "⚜️", "🔰", "♻️", "✅", "🈯", "💹",
+      "❇️", "✳️", "❎", "🌐", "💠", "Ⓜ️", "🌀", "💤", "🏧", "🚾", "♿", "🅿️",
+      "🛗", "🈳", "🈂️", "🛂", "🛃", "🛄", "🛅", "🚹", "🚺", "🚼", "⚧️", "🚻",
+      "🚮", "🎦", "📶", "🈁", "🔣", "ℹ️", "🔤", "🔡", "🔠", "🆖", "🆗", "🆙",
+      "🆒", "🆕", "🆓", "0️⃣", "1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣",
+      "9️⃣", "🔟", "🔢", "#️⃣", "*️⃣", "⏏️", "▶️", "⏸️", "⏯️", "⏹️", "⏺️", "⏭️",
+      "⏮️", "⏩", "⏪", "⏫", "⏬", "◀️", "🔼", "🔽", "➡️", "⬅️", "⬆️", "⬇️",
+      "↗️", "↘️", "↙️", "↖️", "↕️", "↔️", "↪️", "↩️", "⤴️", "⤵️", "🔀", "🔁",
+      "🔂", "🔄", "🔃", "🎵", "🎶", "➕", "➖", "➗", "✖️", "🟰", "♾️", "💲",
+      "💱", "™️", "©️", "®️", "〰️", "➰", "➿", "🔚", "🔙", "🔛", "🔝", "🔜",
+      "✔️", "☑️", "🔘", "🔴", "🟠", "🟡", "🟢", "🔵", "🟣", "⚫", "⚪", "🟤",
+      "🔺", "🔻", "🔸", "🔹", "🔶", "🔷", "🔳", "🔲", "▪️", "▫️", "◾", "◽",
+      "◼️", "◻️", "🟥", "🟧", "🟨", "🟩", "🟦", "🟪", "⬛", "⬜", "🟫"
+    ],
+  },
+  {
+    id: "flags",
+    label: "Bayraklar",
+    icon: "🏳️",
+    keywords: ["flag", "bayrak", "ülke"],
+    emojis: [
+      "🏁", "🚩", "🎌", "🏴", "🏳️", "🏳️‍🌈", "🏳️‍⚧️", "🏴‍☠️", "🇹🇷", "🇺🇸", "🇬🇧", "🇩🇪",
+      "🇫🇷", "🇮🇹", "🇪🇸", "🇵🇹", "🇳🇱", "🇧🇪", "🇨🇭", "🇦🇹", "🇩🇰", "🇸🇪", "🇳🇴", "🇫🇮",
+      "🇮🇸", "🇮🇪", "🇵🇱", "🇨🇿", "🇸🇰", "🇭🇺", "🇷🇴", "🇧🇬", "🇬🇷", "🇺🇦", "🇷🇺", "🇯🇵",
+      "🇰🇷", "🇨🇳", "🇮🇳", "🇵🇰", "🇧🇩", "🇮🇩", "🇲🇾", "🇸🇬", "🇹🇭", "🇵🇭", "🇻🇳", "🇦🇺",
+      "🇳🇿", "🇨🇦", "🇲🇽", "🇧🇷", "🇦🇷", "🇨🇱", "🇨🇴", "🇵🇪", "🇿🇦", "🇪🇬", "🇲🇦", "🇳🇬",
+      "🇸🇦", "🇦🇪", "🇶🇦", "🇮🇱", "🇮🇷", "🇮🇶", "🇦🇿", "🇬🇪", "🇦🇲", "🇰🇿", "🇺🇿", "🇰🇬"
+    ],
+  },
 ];
 
 const QUICK_GIFS = [
@@ -453,6 +619,8 @@ function App() {
   const [gifAttachments, setGifAttachments] = useState([]);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
+  const [emojiSearchText, setEmojiSearchText] = useState("");
+  const [activeEmojiCategoryId, setActiveEmojiCategoryId] = useState("smileys");
   const [gifPickerOpen, setGifPickerOpen] = useState(false);
   const [gifSearchText, setGifSearchText] = useState("");
   const [gifResults, setGifResults] = useState(() => getFallbackGifs(""));
@@ -598,6 +766,35 @@ function App() {
     textChannels.find((channel) => channel.id === activeChannel)?.name ||
     textChannels[0]?.name ||
     "genel";
+
+  const activeEmojiCategory = useMemo(() => {
+    return (
+      EMOJI_CATEGORIES.find((category) => {
+        return category.id === activeEmojiCategoryId;
+      }) || EMOJI_CATEGORIES[0]
+    );
+  }, [activeEmojiCategoryId]);
+
+  const displayedEmojiGroups = useMemo(() => {
+    const cleanSearch = emojiSearchText.trim().toLocaleLowerCase("tr-TR");
+
+    if (!cleanSearch) {
+      return [activeEmojiCategory];
+    }
+
+    return EMOJI_CATEGORIES.map((category) => {
+      const categoryMatches = [category.label, ...category.keywords].some((value) => {
+        return value.toLocaleLowerCase("tr-TR").includes(cleanSearch);
+      });
+
+      return {
+        ...category,
+        emojis: categoryMatches
+          ? category.emojis
+          : category.emojis.filter((emoji) => emoji.includes(cleanSearch)),
+      };
+    }).filter((category) => category.emojis.length > 0);
+  }, [activeEmojiCategory, emojiSearchText]);
 
   const filteredMessages = messages.filter(
     (message) => message.channel === activeChannel
@@ -2011,11 +2208,23 @@ function App() {
 
   function addEmojiToMessage(emoji) {
     setMessageText((previousText) => `${previousText}${emoji}`);
-    setEmojiPickerOpen(false);
+  }
+
+  function selectEmojiCategory(categoryId) {
+    setActiveEmojiCategoryId(categoryId);
+    setEmojiSearchText("");
   }
 
   function toggleEmojiPicker() {
-    setEmojiPickerOpen((previousState) => !previousState);
+    setEmojiPickerOpen((previousState) => {
+      const nextState = !previousState;
+
+      if (nextState) {
+        setEmojiSearchText("");
+      }
+
+      return nextState;
+    });
     setGifPickerOpen(false);
   }
 
@@ -4589,15 +4798,88 @@ function App() {
 
               {emojiPickerOpen && (
                 <div className="emojiPicker">
-                  {QUICK_EMOJIS.map((emoji) => (
+                  <div className="emojiPickerHeader">
+                    <div>
+                      <strong>Emoji seç</strong>
+                      <span>Standart emoji kategorileri</span>
+                    </div>
                     <button
                       type="button"
-                      key={emoji}
-                      onClick={() => addEmojiToMessage(emoji)}
+                      onClick={() => setEmojiPickerOpen(false)}
+                      title="Kapat"
                     >
-                      {emoji}
+                      ×
                     </button>
-                  ))}
+                  </div>
+
+                  <div className="emojiPickerSearchWrap">
+                    <input
+                      className="emojiPickerSearch"
+                      value={emojiSearchText}
+                      onChange={(event) => setEmojiSearchText(event.target.value)}
+                      placeholder="Emoji ara: kalp, yüz, yemek..."
+                    />
+                    {emojiSearchText && (
+                      <button
+                        className="emojiPickerClearButton"
+                        type="button"
+                        onClick={() => setEmojiSearchText("")}
+                        title="Aramayı temizle"
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="emojiPickerBody">
+                    <aside className="emojiCategoryRail">
+                      {EMOJI_CATEGORIES.map((category) => (
+                        <button
+                          className={
+                            activeEmojiCategory.id === category.id && !emojiSearchText
+                              ? "emojiCategoryButton active"
+                              : "emojiCategoryButton"
+                          }
+                          type="button"
+                          key={category.id}
+                          onClick={() => selectEmojiCategory(category.id)}
+                          title={category.label}
+                        >
+                          {category.icon}
+                        </button>
+                      ))}
+                    </aside>
+
+                    <div className="emojiPickerContent">
+                      {displayedEmojiGroups.length === 0 ? (
+                        <div className="emojiPickerEmpty">
+                          Bu arama için emoji bulunamadı.
+                        </div>
+                      ) : (
+                        displayedEmojiGroups.map((category) => (
+                          <section className="emojiGroup" key={category.id}>
+                            <div className="emojiGroupTitle">{category.label}</div>
+                            <div className="emojiGrid">
+                              {category.emojis.map((emoji, emojiIndex) => (
+                                <button
+                                  type="button"
+                                  key={`${category.id}-${emoji}-${emojiIndex}`}
+                                  onClick={() => addEmojiToMessage(emoji)}
+                                  title={emoji}
+                                >
+                                  {emoji}
+                                </button>
+                              ))}
+                            </div>
+                          </section>
+                        ))
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="emojiPickerFooter">
+                    <span>{emojiSearchText ? "Arama sonuçları" : activeEmojiCategory.label}</span>
+                  </div>
                 </div>
               )}
 
