@@ -2742,13 +2742,13 @@ input {
 
 .voiceDock {
   position: sticky;
-  bottom: -18px;
+  bottom: 0;
   z-index: 12;
   margin-top: auto;
   margin-left: -18px;
   margin-right: -18px;
-  margin-bottom: -18px;
-  padding: 10px 12px;
+  margin-bottom: 0;
+  padding: 10px 12px 12px;
   background: #151820;
   border-top: 1px solid #252a35;
   box-shadow: 0 -12px 28px rgba(0, 0, 0, 0.18);
@@ -2802,15 +2802,20 @@ input {
   white-space: nowrap;
 }
 
+.voiceDock.connected .voiceDockUser span {
+  display: none;
+}
+
 .voiceDockUserRow {
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: stretch;
   gap: 10px;
 }
 
 .voiceDockUser {
   min-width: 0;
-  flex: 1;
+  width: 100%;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -2830,15 +2835,19 @@ input {
 }
 
 .voiceDockControls {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.voiceDock:not(.connected) .voiceDockControls {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .voiceDockButton {
-  width: 34px;
-  height: 34px;
+  width: 100%;
+  height: 36px;
   border: none;
   border-radius: 11px;
   background: #2b3140;
