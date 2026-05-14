@@ -1258,19 +1258,84 @@ input {
   color: #ffffff;
 }
 
+.gifPickerSearchWrap {
+  position: relative;
+}
+
 .gifPickerSearch {
   width: 100%;
   border: 1px solid #4752c4;
   outline: none;
   background: #10131a;
   color: #ffffff;
-  padding: 12px 13px;
+  padding: 12px 42px 12px 13px;
   border-radius: 12px;
   font-size: 14px;
 }
 
 .gifPickerSearch:focus {
   border-color: #7c86ff;
+}
+
+.gifPickerClearButton {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 50%;
+  background: #303747;
+  color: #aeb5c2;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.gifPickerClearButton:hover {
+  background: #41495c;
+  color: #ffffff;
+}
+
+.gifCategoryStrip {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.gifCategoryPill {
+  flex-shrink: 0;
+  border: 1px solid #303644;
+  background: #222733;
+  color: #d8dce7;
+  border-radius: 999px;
+  padding: 7px 10px;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.gifCategoryPill:hover {
+  background: #303747;
+  color: #ffffff;
+}
+
+.gifCategoryPill.active {
+  background: #4752c4;
+  border-color: #5d68dd;
+  color: #ffffff;
+}
+
+.gifPickerNotice {
+  color: #ffcf7a;
+  background: rgba(255, 176, 32, 0.1);
+  border: 1px solid rgba(255, 176, 32, 0.22);
+  padding: 9px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  line-height: 1.35;
 }
 
 .gifPickerGrid {

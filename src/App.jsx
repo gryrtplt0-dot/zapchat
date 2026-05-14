@@ -37,6 +37,12 @@ const PRESENCE_HEARTBEAT_MS = 25000;
 const ONLINE_TIMEOUT_MS = 70000;
 const MAX_UPLOAD_SIZE_BYTES = 500 * 1024 * 1024;
 const MAX_UPLOAD_SIZE_LABEL = "500 MB";
+const GIF_PROVIDER = (import.meta.env.VITE_GIF_PROVIDER || "giphy").toLowerCase();
+const GIPHY_API_KEY = import.meta.env.VITE_GIPHY_API_KEY || "";
+const TENOR_API_KEY = import.meta.env.VITE_TENOR_API_KEY || "";
+const GIF_RESULT_LIMIT = 24;
+const GIF_SEARCH_DEBOUNCE_MS = 450;
+const GIF_CLIENT_KEY = "zapchat";
 const QUICK_EMOJIS = [
   "😀",
   "😂",
@@ -135,6 +141,18 @@ const QUICK_GIFS = [
   },
 ];
 
+
+const GIF_CATEGORIES = [
+  { id: "popular", title: "Popüler GIF'ler", query: "popular reaction" },
+  { id: "hello", title: "Hello", query: "hello wave" },
+  { id: "lol", title: "LOL", query: "lol funny laugh" },
+  { id: "love", title: "Love", query: "love hearts" },
+  { id: "birthday", title: "Happy birthday", query: "happy birthday" },
+  { id: "cat", title: "Cat", query: "cat reaction" },
+  { id: "dance", title: "Dance", query: "dance party" },
+  { id: "wow", title: "Wow", query: "wow reaction" },
+];
+
 const DEFAULT_TEXT_CATEGORY_ID = "text_channels";
 const DEFAULT_VOICE_CATEGORY_ID = "voice_channels";
 
@@ -153,6 +171,69 @@ const DEFAULT_TEXT_CHANNELS = [
 const DEFAULT_VOICE_CHANNELS = [
   { id: "main_voice", name: "Sesli Sohbet", categoryId: DEFAULT_VOICE_CATEGORY_ID },
 ];
+
+function hasExternalGifProvider() {
+  if (GIF_PROVIDER === "tenor") {
+    return Boolean(TENOR_API_KEY);
+  }
+
+  return Boolean(GIPHY_API_KEY);
+}
+
+function getFallbackGifs(searchText = "") {
+  const cleanSearch = searchText.trim().toLocaleLowerCase("tr-TR");
+
+  if (!cleanSearch) {
+    return QUICK_GIFS;
+  }
+
+  return QUICK_GIFS.filter((gif) => {
+    const searchableText = [gif.title, ...gif.tags]
+      .join(" ")
+      .toLocaleLowerCase("tr-TR");
+
+    return searchableText.includes(cleanSearch);
+  });
+}
+
+function normalizeGiphyGif(gif) {
+  const original = gif?.images?.original;
+  const fixedHeight = gif?.images?.fixed_height;
+  const downsized = gif?.images?.downsized_medium;
+  const url = original?.url || downsized?.url || fixedHeight?.url;
+  const previewUrl = fixedHeight?.url || downsized?.url || original?.url;
+
+  if (!url) {
+    return null;
+  }
+
+  return {
+    id: `giphy_${gif.id}`,
+    title: gif.title || "GIF",
+    url,
+    previewUrl,
+    source: "giphy",
+  };
+}
+
+function normalizeTenorGif(result) {
+  const gifMedia = result?.media_formats?.gif;
+  const tinyGifMedia = result?.media_formats?.tinygif;
+  const url = gifMedia?.url || tinyGifMedia?.url;
+  const previewUrl = tinyGifMedia?.url || gifMedia?.url;
+
+  if (!url) {
+    return null;
+  }
+
+  return {
+    id: `tenor_${result.id}`,
+    title: result.content_description || result.title || "GIF",
+    url,
+    previewUrl,
+    source: "tenor",
+  };
+}
 
 function normalizeChannelName(value) {
   return value.trim().replace(/\s+/g, " ");
@@ -374,6 +455,10 @@ function App() {
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
   const [gifPickerOpen, setGifPickerOpen] = useState(false);
   const [gifSearchText, setGifSearchText] = useState("");
+  const [gifResults, setGifResults] = useState(() => getFallbackGifs(""));
+  const [gifLoading, setGifLoading] = useState(false);
+  const [gifError, setGifError] = useState("");
+  const [gifActiveCategory, setGifActiveCategory] = useState("popular");
   const [messages, setMessages] = useState([]);
   const [members, setMembers] = useState([]);
   const [memberError, setMemberError] = useState("");
@@ -415,6 +500,7 @@ function App() {
 
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
+  const gifSearchAbortRef = useRef(null);
   const localStreamRef = useRef(null);
   const peerConnectionsRef = useRef(new Map());
   const pendingIceCandidatesRef = useRef(new Map());
@@ -503,22 +589,6 @@ function App() {
       };
     });
   }, [channelCategories, textChannels, voiceChannels]);
-
-  const filteredQuickGifs = useMemo(() => {
-    const cleanSearch = gifSearchText.trim().toLocaleLowerCase("tr-TR");
-
-    if (!cleanSearch) {
-      return QUICK_GIFS;
-    }
-
-    return QUICK_GIFS.filter((gif) => {
-      const searchableText = [gif.title, ...gif.tags]
-        .join(" ")
-        .toLocaleLowerCase("tr-TR");
-
-      return searchableText.includes(cleanSearch);
-    });
-  }, [gifSearchText]);
 
   const voiceChannelsKey = useMemo(() => {
     return voiceChannels.map((channel) => channel.id).join("|");
@@ -1827,6 +1897,118 @@ function App() {
     });
   }
 
+  async function loadGifResults(searchText = "") {
+    const cleanSearch = searchText.trim();
+
+    if (gifSearchAbortRef.current) {
+      gifSearchAbortRef.current.abort();
+    }
+
+    if (!hasExternalGifProvider()) {
+      setGifResults(getFallbackGifs(cleanSearch));
+      setGifLoading(false);
+      setGifError(
+        "Sınırsız GIF araması için VITE_GIPHY_API_KEY veya VITE_TENOR_API_KEY ekle. Şimdilik hazır GIF havuzu gösteriliyor."
+      );
+      return;
+    }
+
+    const abortController = new AbortController();
+    gifSearchAbortRef.current = abortController;
+    setGifLoading(true);
+    setGifError("");
+
+    try {
+      let requestUrl = "";
+
+      if (GIF_PROVIDER === "tenor") {
+        const params = new URLSearchParams({
+          key: TENOR_API_KEY,
+          client_key: GIF_CLIENT_KEY,
+          limit: String(GIF_RESULT_LIMIT),
+          media_filter: "gif,tinygif",
+          contentfilter: "medium",
+          locale: "tr_TR",
+        });
+
+        if (cleanSearch) {
+          params.set("q", cleanSearch);
+          requestUrl = `https://tenor.googleapis.com/v2/search?${params.toString()}`;
+        } else {
+          requestUrl = `https://tenor.googleapis.com/v2/featured?${params.toString()}`;
+        }
+      } else {
+        const params = new URLSearchParams({
+          api_key: GIPHY_API_KEY,
+          limit: String(GIF_RESULT_LIMIT),
+          rating: "pg-13",
+          lang: "tr",
+        });
+
+        if (cleanSearch) {
+          params.set("q", cleanSearch);
+          requestUrl = `https://api.giphy.com/v1/gifs/search?${params.toString()}`;
+        } else {
+          requestUrl = `https://api.giphy.com/v1/gifs/trending?${params.toString()}`;
+        }
+      }
+
+      const response = await fetch(requestUrl, {
+        signal: abortController.signal,
+      });
+
+      if (!response.ok) {
+        throw new Error(`GIF API yanıtı başarısız: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const externalGifs =
+        GIF_PROVIDER === "tenor"
+          ? (data.results || []).map(normalizeTenorGif).filter(Boolean)
+          : (data.data || []).map(normalizeGiphyGif).filter(Boolean);
+
+      if (externalGifs.length === 0) {
+        setGifResults(getFallbackGifs(cleanSearch));
+        setGifError("Bu aramada dış GIF sonucu bulunamadı; hazır havuz gösteriliyor.");
+        return;
+      }
+
+      setGifResults(externalGifs);
+    } catch (error) {
+      if (error.name === "AbortError") {
+        return;
+      }
+
+      console.error("GIF sonuçları alınamadı:", error);
+      setGifResults(getFallbackGifs(cleanSearch));
+      setGifError("GIF sitesinden sonuç alınamadı; hazır havuz gösteriliyor.");
+    } finally {
+      if (gifSearchAbortRef.current === abortController) {
+        gifSearchAbortRef.current = null;
+        setGifLoading(false);
+      }
+    }
+  }
+
+  function selectGifCategory(category) {
+    setGifActiveCategory(category.id);
+    setGifSearchText(category.query);
+  }
+
+  useEffect(() => {
+    if (!gifPickerOpen) {
+      return undefined;
+    }
+
+    const searchTimer = window.setTimeout(() => {
+      loadGifResults(gifSearchText);
+    }, GIF_SEARCH_DEBOUNCE_MS);
+
+    return () => {
+      window.clearTimeout(searchTimer);
+    };
+  }, [gifPickerOpen, gifSearchText]);
+
   function addEmojiToMessage(emoji) {
     setMessageText((previousText) => `${previousText}${emoji}`);
     setEmojiPickerOpen(false);
@@ -1838,7 +2020,15 @@ function App() {
   }
 
   function toggleGifPicker() {
-    setGifPickerOpen((previousState) => !previousState);
+    setGifPickerOpen((previousState) => {
+      const nextState = !previousState;
+
+      if (nextState) {
+        setGifError("");
+      }
+
+      return nextState;
+    });
     setEmojiPickerOpen(false);
   }
 
@@ -1849,6 +2039,7 @@ function App() {
         id: `${Date.now()}_${gif.id}_${Math.random().toString(36).slice(2)}`,
         name: gif.title || "GIF",
         url: gif.url,
+        previewUrl: gif.previewUrl || gif.url,
         contentType: gif.url.toLowerCase().includes(".webp")
           ? "image/webp"
           : "image/gif",
@@ -4389,7 +4580,11 @@ function App() {
                   <div className="gifPickerHeader">
                     <div>
                       <strong>GIF seç</strong>
-                      <span>Hazır GIF havuzundan hızlıca ekle</span>
+                      <span>
+                        {hasExternalGifProvider()
+                          ? `${GIF_PROVIDER === "tenor" ? "Tenor" : "GIPHY"} üzerinden ara`
+                          : "Hazır GIF havuzu"}
+                      </span>
                     </div>
                     <button
                       type="button"
@@ -4400,16 +4595,55 @@ function App() {
                     </button>
                   </div>
 
-                  <input
-                    className="gifPickerSearch"
-                    value={gifSearchText}
-                    onChange={(event) => setGifSearchText(event.target.value)}
-                    placeholder="GIF ara: hello, lol, cat..."
-                  />
+                  <div className="gifPickerSearchWrap">
+                    <input
+                      className="gifPickerSearch"
+                      value={gifSearchText}
+                      onChange={(event) => {
+                        setGifActiveCategory("search");
+                        setGifSearchText(event.target.value);
+                      }}
+                      placeholder="GIF ara: hello, lol, cat..."
+                    />
+                    {gifSearchText && (
+                      <button
+                        className="gifPickerClearButton"
+                        type="button"
+                        onClick={() => {
+                          setGifSearchText("");
+                          setGifActiveCategory("popular");
+                        }}
+                        title="Aramayı temizle"
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="gifCategoryStrip">
+                    {GIF_CATEGORIES.map((category) => (
+                      <button
+                        className={
+                          gifActiveCategory === category.id
+                            ? "gifCategoryPill active"
+                            : "gifCategoryPill"
+                        }
+                        type="button"
+                        key={category.id}
+                        onClick={() => selectGifCategory(category)}
+                      >
+                        {category.title}
+                      </button>
+                    ))}
+                  </div>
+
+                  {gifError && <div className="gifPickerNotice">{gifError}</div>}
 
                   <div className="gifPickerGrid">
-                    {filteredQuickGifs.length > 0 ? (
-                      filteredQuickGifs.map((gif) => (
+                    {gifLoading && <div className="gifPickerEmpty">GIF'ler yükleniyor...</div>}
+
+                    {!gifLoading && gifResults.length > 0 &&
+                      gifResults.map((gif) => (
                         <button
                           className="gifPickerCard"
                           type="button"
@@ -4417,13 +4651,18 @@ function App() {
                           onClick={() => addGifFromPicker(gif)}
                           title={`${gif.title} GIF ekle`}
                         >
-                          <img src={gif.url} alt={gif.title} loading="lazy" />
+                          <img
+                            src={gif.previewUrl || gif.url}
+                            alt={gif.title}
+                            loading="lazy"
+                          />
                           <span>{gif.title}</span>
                         </button>
-                      ))
-                    ) : (
+                      ))}
+
+                    {!gifLoading && gifResults.length === 0 && (
                       <div className="gifPickerEmpty">
-                        Bu aramaya uygun hazır GIF yok.
+                        Bu aramaya uygun GIF bulunamadı.
                       </div>
                     )}
                   </div>
