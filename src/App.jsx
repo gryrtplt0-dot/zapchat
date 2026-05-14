@@ -60,6 +60,81 @@ const QUICK_EMOJIS = [
   "🤝",
 ];
 
+const QUICK_GIFS = [
+  {
+    id: "cat-typing",
+    title: "Cat typing",
+    tags: ["cat", "kedi", "typing", "yazıyor", "çalışma"],
+    url: "https://media.giphy.com/media/JIX9t2j0ZTN9S/giphy.gif",
+  },
+  {
+    id: "excited",
+    title: "Excited",
+    tags: ["happy", "mutlu", "heyecan", "yes", "reaction"],
+    url: "https://media.giphy.com/media/111ebonMs90YLu/giphy.gif",
+  },
+  {
+    id: "clap",
+    title: "Clap",
+    tags: ["clap", "alkış", "bravo", "good", "reaction"],
+    url: "https://media.giphy.com/media/l3q2XhfQ8oCkm1Ts4/giphy.gif",
+  },
+  {
+    id: "facepalm",
+    title: "Facepalm",
+    tags: ["facepalm", "oops", "hata", "reaction"],
+    url: "https://media.giphy.com/media/3xz2BLBOt13X9AgjEA/giphy.gif",
+  },
+  {
+    id: "mind-blown",
+    title: "Mind blown",
+    tags: ["mind blown", "wow", "şaşkın", "reaction"],
+    url: "https://media.giphy.com/media/26ufdipQqU2lhNA4g/giphy.gif",
+  },
+  {
+    id: "dance",
+    title: "Dance",
+    tags: ["dance", "dans", "party", "eğlence"],
+    url: "https://media.giphy.com/media/GeimqsH0TLDt4tScGw/giphy.gif",
+  },
+  {
+    id: "thumbs-up",
+    title: "Thumbs up",
+    tags: ["thumbs up", "ok", "tamam", "onay", "good"],
+    url: "https://media.giphy.com/media/GCvktC0KFy9l6/giphy.gif",
+  },
+  {
+    id: "nope",
+    title: "Nope",
+    tags: ["no", "hayır", "nope", "reaction"],
+    url: "https://media.giphy.com/media/daPCSjwus6UR2JxRX1/giphy.gif",
+  },
+  {
+    id: "laugh",
+    title: "Laugh",
+    tags: ["laugh", "gülmek", "lol", "komik"],
+    url: "https://media.giphy.com/media/10JhviFuU2gWD6/giphy.gif",
+  },
+  {
+    id: "hello",
+    title: "Hello",
+    tags: ["hello", "selam", "merhaba", "wave"],
+    url: "https://media.giphy.com/media/ASd0Ukj0y3qMM/giphy.gif",
+  },
+  {
+    id: "loading",
+    title: "Loading",
+    tags: ["loading", "bekle", "wait", "düşünüyor"],
+    url: "https://media.giphy.com/media/3oEjI6SIIHBdRxXI40/giphy.gif",
+  },
+  {
+    id: "fire",
+    title: "Fire",
+    tags: ["fire", "ateş", "lit", "efsane"],
+    url: "https://media.giphy.com/media/3o72FfM5HJydzafgUE/giphy.gif",
+  },
+];
+
 const DEFAULT_TEXT_CATEGORY_ID = "text_channels";
 const DEFAULT_VOICE_CATEGORY_ID = "voice_channels";
 
@@ -297,6 +372,8 @@ function App() {
   const [gifAttachments, setGifAttachments] = useState([]);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
+  const [gifPickerOpen, setGifPickerOpen] = useState(false);
+  const [gifSearchText, setGifSearchText] = useState("");
   const [messages, setMessages] = useState([]);
   const [members, setMembers] = useState([]);
   const [memberError, setMemberError] = useState("");
@@ -426,6 +503,22 @@ function App() {
       };
     });
   }, [channelCategories, textChannels, voiceChannels]);
+
+  const filteredQuickGifs = useMemo(() => {
+    const cleanSearch = gifSearchText.trim().toLocaleLowerCase("tr-TR");
+
+    if (!cleanSearch) {
+      return QUICK_GIFS;
+    }
+
+    return QUICK_GIFS.filter((gif) => {
+      const searchableText = [gif.title, ...gif.tags]
+        .join(" ")
+        .toLocaleLowerCase("tr-TR");
+
+      return searchableText.includes(cleanSearch);
+    });
+  }, [gifSearchText]);
 
   const voiceChannelsKey = useMemo(() => {
     return voiceChannels.map((channel) => channel.id).join("|");
@@ -611,10 +704,6 @@ function App() {
       .replace(/[^a-zA-Z0-9ğüşıöçĞÜŞİÖÇ._-]+/g, "-")
       .replace(/-+/g, "-")
       .slice(0, 90);
-  }
-
-  function isLikelyGifUrl(url) {
-    return /^https?:\/\/.+/i.test(url) && /\.(gif|webp)(\?|#|$)/i.test(url);
   }
 
   function getMessageAttachments(message) {
@@ -1743,34 +1832,33 @@ function App() {
     setEmojiPickerOpen(false);
   }
 
-  function addGifByUrl() {
-    const rawUrl = prompt("GIF bağlantısını yapıştır:");
+  function toggleEmojiPicker() {
+    setEmojiPickerOpen((previousState) => !previousState);
+    setGifPickerOpen(false);
+  }
 
-    if (rawUrl === null) {
-      return;
-    }
+  function toggleGifPicker() {
+    setGifPickerOpen((previousState) => !previousState);
+    setEmojiPickerOpen(false);
+  }
 
-    const cleanUrl = rawUrl.trim();
-
-    if (!isLikelyGifUrl(cleanUrl)) {
-      alert("Geçerli bir GIF/WebP bağlantısı gir. Örnek: https://.../dosya.gif");
-      return;
-    }
-
+  function addGifFromPicker(gif) {
     setGifAttachments((previousGifs) => [
       ...previousGifs,
       {
-        id: `${Date.now()}_${Math.random().toString(36).slice(2)}`,
-        name: "GIF",
-        url: cleanUrl,
-        contentType: cleanUrl.toLowerCase().includes(".webp")
+        id: `${Date.now()}_${gif.id}_${Math.random().toString(36).slice(2)}`,
+        name: gif.title || "GIF",
+        url: gif.url,
+        contentType: gif.url.toLowerCase().includes(".webp")
           ? "image/webp"
           : "image/gif",
         size: 0,
         type: "gif",
-        source: "url",
+        source: "picker",
       },
     ]);
+    setGifPickerOpen(false);
+    setGifSearchText("");
   }
 
   function removeGifAttachment(gifId) {
@@ -1875,6 +1963,8 @@ function App() {
       setSelectedFiles([]);
       setGifAttachments([]);
       setEmojiPickerOpen(false);
+      setGifPickerOpen(false);
+      setGifSearchText("");
       setUploadProgress(0);
     } catch (error) {
       console.error("Mesaj gönderilemedi:", error);
@@ -4258,7 +4348,7 @@ function App() {
                   <button
                     className="messageToolButton"
                     type="button"
-                    onClick={() => setEmojiPickerOpen((previous) => !previous)}
+                    onClick={toggleEmojiPicker}
                     disabled={isSending}
                     title="Emoji ekle"
                   >
@@ -4267,9 +4357,9 @@ function App() {
                   <button
                     className="messageToolButton"
                     type="button"
-                    onClick={addGifByUrl}
+                    onClick={toggleGifPicker}
                     disabled={isSending}
-                    title="GIF bağlantısı ekle"
+                    title="GIF seç"
                   >
                     GIF
                   </button>
@@ -4291,6 +4381,52 @@ function App() {
                       {emoji}
                     </button>
                   ))}
+                </div>
+              )}
+
+              {gifPickerOpen && (
+                <div className="gifPicker">
+                  <div className="gifPickerHeader">
+                    <div>
+                      <strong>GIF seç</strong>
+                      <span>Hazır GIF havuzundan hızlıca ekle</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setGifPickerOpen(false)}
+                      title="Kapat"
+                    >
+                      ×
+                    </button>
+                  </div>
+
+                  <input
+                    className="gifPickerSearch"
+                    value={gifSearchText}
+                    onChange={(event) => setGifSearchText(event.target.value)}
+                    placeholder="GIF ara: hello, lol, cat..."
+                  />
+
+                  <div className="gifPickerGrid">
+                    {filteredQuickGifs.length > 0 ? (
+                      filteredQuickGifs.map((gif) => (
+                        <button
+                          className="gifPickerCard"
+                          type="button"
+                          key={gif.id}
+                          onClick={() => addGifFromPicker(gif)}
+                          title={`${gif.title} GIF ekle`}
+                        >
+                          <img src={gif.url} alt={gif.title} loading="lazy" />
+                          <span>{gif.title}</span>
+                        </button>
+                      ))
+                    ) : (
+                      <div className="gifPickerEmpty">
+                        Bu aramaya uygun hazır GIF yok.
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </form>
