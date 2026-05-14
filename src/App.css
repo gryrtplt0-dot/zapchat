@@ -922,15 +922,201 @@ input {
   line-height: 1.45;
 }
 
-.messageForm {
-  padding: 18px 24px 24px;
+.messageAttachments {
+  margin-top: 10px;
+  display: grid;
+  gap: 10px;
+  max-width: 540px;
+}
+
+.messageAttachmentPreview {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 6px;
+  width: min(360px, 100%);
+  color: #cfd5e1;
+  text-decoration: none;
+}
+
+.messageAttachmentPreview img {
+  max-width: 100%;
+  max-height: 280px;
+  object-fit: contain;
+  border-radius: 14px;
+  border: 1px solid #303644;
+  background: #0d0f14;
+}
+
+.messageAttachmentPreview span {
+  color: #8f96a3;
+  font-size: 12px;
+}
+
+.messageVideoAttachment {
   display: flex;
-  gap: 12px;
+  flex-direction: column;
+  gap: 6px;
+  width: min(460px, 100%);
+}
+
+.messageVideoAttachment video {
+  width: 100%;
+  max-height: 320px;
+  border-radius: 14px;
+  border: 1px solid #303644;
+  background: #0d0f14;
+}
+
+.messageVideoAttachment a {
+  color: #ffcf7a;
+  font-size: 13px;
+  text-decoration: none;
+}
+
+.messageFileAttachment {
+  width: min(380px, 100%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 14px;
+  background: #171a21;
+  border: 1px solid #303644;
+  text-decoration: none;
+  color: #ffffff;
+}
+
+.messageFileAttachment:hover {
+  border-color: rgba(255, 176, 32, 0.42);
+}
+
+.messageFileIcon {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: #222733;
+  flex-shrink: 0;
+}
+
+.messageFileInfo {
+  min-width: 0;
+}
+
+.messageFileInfo strong {
+  display: block;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.messageFileInfo small {
+  display: block;
+  margin-top: 2px;
+  color: #8f96a3;
+  font-size: 12px;
+}
+
+.messageForm {
+  position: relative;
+  padding: 12px 24px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
   background: #111318;
 }
 
-.messageForm input {
+.hiddenFileInput {
+  display: none;
+}
+
+.attachmentComposerPanel {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px;
+  background: #171a21;
+  border: 1px solid #303644;
+  border-radius: 14px;
+}
+
+.attachmentChip {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  max-width: 260px;
+  padding: 8px;
+  border-radius: 12px;
+  background: #10131a;
+  border: 1px solid #252a35;
+}
+
+.attachmentChip > span {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  background: #222733;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 900;
+  flex-shrink: 0;
+}
+
+.attachmentChip div {
+  min-width: 0;
+}
+
+.attachmentChip strong {
+  display: block;
+  color: #ffffff;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachmentChip small {
+  display: block;
+  color: #8f96a3;
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachmentChip button {
+  border: none;
+  background: transparent;
+  color: #8f96a3;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.attachmentChip button:hover:not(:disabled) {
+  color: #ffb0b0;
+}
+
+.uploadProgressText {
+  width: 100%;
+  color: #ffcf7a;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.messageInputRow {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.messageInputRow input {
   flex: 1;
+  min-width: 0;
   border: 1px solid #303644;
   outline: none;
   background: #1b1f28;
@@ -939,27 +1125,83 @@ input {
   border-radius: 14px;
 }
 
-.messageForm input:focus {
+.messageInputRow input:focus {
   border-color: #ffb020;
 }
 
-.messageForm button {
+.messageTools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.messageToolButton {
+  width: 42px;
+  height: 42px;
+  border: none;
+  background: #222733;
+  color: #cfd5e1;
+  border-radius: 12px;
+  font-weight: 900;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.messageToolButton:hover:not(:disabled) {
+  background: #303747;
+  color: #ffffff;
+}
+
+.messageSendButton {
   border: none;
   background: #ffb020;
   color: #111318;
   padding: 0 20px;
+  height: 42px;
   border-radius: 14px;
   font-weight: 800;
   cursor: pointer;
+  flex-shrink: 0;
 }
 
-.messageForm button:hover {
+.messageSendButton:hover:not(:disabled) {
   background: #ffc04f;
 }
 
 .messageForm button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.emojiPicker {
+  position: absolute;
+  right: 128px;
+  bottom: 78px;
+  width: 230px;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 6px;
+  padding: 10px;
+  border-radius: 16px;
+  background: #1b1f28;
+  border: 1px solid #303644;
+  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.32);
+  z-index: 18;
+}
+
+.emojiPicker button {
+  border: none;
+  background: #222733;
+  border-radius: 10px;
+  height: 34px;
+  cursor: pointer;
+  font-size: 18px;
+}
+
+.emojiPicker button:hover {
+  background: #303747;
 }
 
 .emptyState {
@@ -2090,5 +2332,25 @@ input {
 
   .messageForm {
     padding: 14px 18px 18px;
+  }
+
+  .messageInputRow {
+    flex-wrap: wrap;
+  }
+
+  .messageInputRow input {
+    order: 1;
+    flex-basis: 100%;
+  }
+
+  .messageTools,
+  .messageSendButton,
+  .messageToolButton {
+    order: 2;
+  }
+
+  .emojiPicker {
+    right: 18px;
+    bottom: 118px;
   }
 }

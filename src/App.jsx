@@ -20,7 +20,12 @@ import {
   updateDoc,
   where,
 } from "firebase/firestore";
-import { auth, db } from "./firebase";
+import {
+  getDownloadURL,
+  ref as storageReference,
+  uploadBytesResumable,
+} from "firebase/storage";
+import { auth, db, storage } from "./firebase";
 import "./App.css";
 
 const ICE_SERVERS = [
@@ -30,6 +35,30 @@ const ICE_SERVERS = [
 
 const PRESENCE_HEARTBEAT_MS = 25000;
 const ONLINE_TIMEOUT_MS = 70000;
+const MAX_UPLOAD_SIZE_BYTES = 500 * 1024 * 1024;
+const MAX_UPLOAD_SIZE_LABEL = "500 MB";
+const QUICK_EMOJIS = [
+  "😀",
+  "😂",
+  "🤣",
+  "😊",
+  "😍",
+  "😎",
+  "😭",
+  "😡",
+  "👍",
+  "👎",
+  "🔥",
+  "💀",
+  "🎉",
+  "❤️",
+  "💙",
+  "✅",
+  "❌",
+  "👀",
+  "🙏",
+  "🤝",
+];
 
 const DEFAULT_TEXT_CATEGORY_ID = "text_channels";
 const DEFAULT_VOICE_CATEGORY_ID = "voice_channels";
@@ -264,6 +293,10 @@ function App() {
 
   const [activeChannel, setActiveChannel] = useState("general");
   const [messageText, setMessageText] = useState("");
+  const [selectedFiles, setSelectedFiles] = useState([]);
+  const [gifAttachments, setGifAttachments] = useState([]);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
   const [messages, setMessages] = useState([]);
   const [members, setMembers] = useState([]);
   const [memberError, setMemberError] = useState("");
@@ -304,6 +337,7 @@ function App() {
   const [serverMenuOpen, setServerMenuOpen] = useState(false);
 
   const messagesEndRef = useRef(null);
+  const fileInputRef = useRef(null);
   const localStreamRef = useRef(null);
   const peerConnectionsRef = useRef(new Map());
   const pendingIceCandidatesRef = useRef(new Map());
@@ -538,6 +572,53 @@ function App() {
     const hour = String(now.getHours()).padStart(2, "0");
     const minute = String(now.getMinutes()).padStart(2, "0");
     return `${hour}:${minute}`;
+  }
+
+  function formatFileSize(bytes = 0) {
+    if (!bytes) {
+      return "0 B";
+    }
+
+    const units = ["B", "KB", "MB", "GB"];
+    const unitIndex = Math.min(
+      Math.floor(Math.log(bytes) / Math.log(1024)),
+      units.length - 1
+    );
+    const value = bytes / 1024 ** unitIndex;
+
+    return `${value.toFixed(value >= 10 || unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
+  }
+
+  function getAttachmentType(contentType = "", fileName = "") {
+    const cleanContentType = contentType.toLowerCase();
+    const cleanFileName = fileName.toLowerCase();
+
+    if (cleanContentType.startsWith("image/") || cleanFileName.endsWith(".gif")) {
+      return cleanContentType.includes("gif") || cleanFileName.endsWith(".gif")
+        ? "gif"
+        : "image";
+    }
+
+    if (cleanContentType.startsWith("video/")) {
+      return "video";
+    }
+
+    return "file";
+  }
+
+  function sanitizeFileName(fileName) {
+    return String(fileName || "dosya")
+      .replace(/[^a-zA-Z0-9ğüşıöçĞÜŞİÖÇ._-]+/g, "-")
+      .replace(/-+/g, "-")
+      .slice(0, 90);
+  }
+
+  function isLikelyGifUrl(url) {
+    return /^https?:\/\/.+/i.test(url) && /\.(gif|webp)(\?|#|$)/i.test(url);
+  }
+
+  function getMessageAttachments(message) {
+    return Array.isArray(message.attachments) ? message.attachments : [];
   }
 
   function getServerInitial(serverName) {
@@ -1618,18 +1699,165 @@ function App() {
     }
   }
 
+  function openFilePicker() {
+    fileInputRef.current?.click();
+  }
+
+  function handleFileSelection(event) {
+    const files = Array.from(event.target.files || []);
+
+    if (files.length === 0) {
+      return;
+    }
+
+    const allowedFiles = [];
+    const rejectedFiles = [];
+
+    files.forEach((file) => {
+      if (file.size > MAX_UPLOAD_SIZE_BYTES) {
+        rejectedFiles.push(file.name);
+        return;
+      }
+
+      allowedFiles.push(file);
+    });
+
+    if (rejectedFiles.length > 0) {
+      alert(
+        `Bazı dosyalar ${MAX_UPLOAD_SIZE_LABEL} sınırını geçtiği için eklenmedi:\n${rejectedFiles.join("\n")}`
+      );
+    }
+
+    setSelectedFiles((previousFiles) => [...previousFiles, ...allowedFiles]);
+    event.target.value = "";
+  }
+
+  function removeSelectedFile(indexToRemove) {
+    setSelectedFiles((previousFiles) => {
+      return previousFiles.filter((_, index) => index !== indexToRemove);
+    });
+  }
+
+  function addEmojiToMessage(emoji) {
+    setMessageText((previousText) => `${previousText}${emoji}`);
+    setEmojiPickerOpen(false);
+  }
+
+  function addGifByUrl() {
+    const rawUrl = prompt("GIF bağlantısını yapıştır:");
+
+    if (rawUrl === null) {
+      return;
+    }
+
+    const cleanUrl = rawUrl.trim();
+
+    if (!isLikelyGifUrl(cleanUrl)) {
+      alert("Geçerli bir GIF/WebP bağlantısı gir. Örnek: https://.../dosya.gif");
+      return;
+    }
+
+    setGifAttachments((previousGifs) => [
+      ...previousGifs,
+      {
+        id: `${Date.now()}_${Math.random().toString(36).slice(2)}`,
+        name: "GIF",
+        url: cleanUrl,
+        contentType: cleanUrl.toLowerCase().includes(".webp")
+          ? "image/webp"
+          : "image/gif",
+        size: 0,
+        type: "gif",
+        source: "url",
+      },
+    ]);
+  }
+
+  function removeGifAttachment(gifId) {
+    setGifAttachments((previousGifs) => {
+      return previousGifs.filter((gif) => gif.id !== gifId);
+    });
+  }
+
+  function uploadFileAttachment(file, fileIndex, totalFiles) {
+    return new Promise((resolve, reject) => {
+      const safeName = sanitizeFileName(file.name);
+      const uniqueFileName = `${Date.now()}_${currentUser.uid}_${safeName}`;
+      const storagePath = `messageAttachments/${activeServerId}/${activeChannel}/${uniqueFileName}`;
+      const fileRef = storageReference(storage, storagePath);
+      const uploadTask = uploadBytesResumable(fileRef, file, {
+        contentType: file.type || "application/octet-stream",
+        customMetadata: {
+          serverId: activeServerId,
+          channelId: activeChannel,
+          uploadedByUid: currentUser.uid,
+        },
+      });
+
+      uploadTask.on(
+        "state_changed",
+        (snapshot) => {
+          const fileProgress = snapshot.bytesTransferred / snapshot.totalBytes;
+          const totalProgress = Math.round(
+            ((fileIndex + fileProgress) / totalFiles) * 100
+          );
+          setUploadProgress(totalProgress);
+        },
+        (error) => {
+          reject(error);
+        },
+        async () => {
+          try {
+            const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+            resolve({
+              name: file.name,
+              size: file.size,
+              contentType: file.type || "application/octet-stream",
+              type: getAttachmentType(file.type, file.name),
+              url: downloadURL,
+              storagePath,
+              source: "upload",
+            });
+          } catch (error) {
+            reject(error);
+          }
+        }
+      );
+    });
+  }
+
+  async function uploadSelectedFiles() {
+    if (selectedFiles.length === 0) {
+      return [];
+    }
+
+    const uploadedAttachments = [];
+
+    for (const [index, file] of selectedFiles.entries()) {
+      const attachment = await uploadFileAttachment(file, index, selectedFiles.length);
+      uploadedAttachments.push(attachment);
+    }
+
+    return uploadedAttachments;
+  }
+
   async function sendMessage(event) {
     event.preventDefault();
 
     const cleanText = messageText.trim();
     const cleanUsername = username.trim() || "Guest";
+    const hasAttachments = selectedFiles.length > 0 || gifAttachments.length > 0;
 
-    if (cleanText === "" || !currentUser || !activeServerId) {
+    if ((!cleanText && !hasAttachments) || !currentUser || !activeServerId) {
       return;
     }
 
     try {
       setIsSending(true);
+      setUploadProgress(0);
+
+      const uploadedAttachments = await uploadSelectedFiles();
+      const attachments = [...uploadedAttachments, ...gifAttachments];
 
       await addDoc(collection(db, "messages"), {
         serverId: activeServerId,
@@ -1638,17 +1866,72 @@ function App() {
         email: currentUser.email,
         uid: currentUser.uid,
         text: cleanText,
+        attachments,
         time: getCurrentTime(),
         createdAt: serverTimestamp(),
       });
 
       setMessageText("");
+      setSelectedFiles([]);
+      setGifAttachments([]);
+      setEmojiPickerOpen(false);
+      setUploadProgress(0);
     } catch (error) {
       console.error("Mesaj gönderilemedi:", error);
-      alert("Mesaj gönderilemedi. Firebase bağlantısını kontrol et.");
+      alert("Mesaj veya dosya gönderilemedi. Firebase Storage/Rules ayarlarını kontrol et.");
     } finally {
       setIsSending(false);
     }
+  }
+
+  function renderMessageAttachment(attachment, index) {
+    const attachmentType = attachment.type || getAttachmentType(
+      attachment.contentType,
+      attachment.name
+    );
+    const attachmentName = attachment.name || "Dosya";
+
+    if ((attachmentType === "image" || attachmentType === "gif") && attachment.url) {
+      return (
+        <a
+          className="messageAttachmentPreview"
+          href={attachment.url}
+          target="_blank"
+          rel="noreferrer"
+          key={`${attachment.url}_${index}`}
+        >
+          <img src={attachment.url} alt={attachmentName} loading="lazy" />
+          <span>{attachmentType === "gif" ? "GIF" : attachmentName}</span>
+        </a>
+      );
+    }
+
+    if (attachmentType === "video" && attachment.url) {
+      return (
+        <div className="messageVideoAttachment" key={`${attachment.url}_${index}`}>
+          <video src={attachment.url} controls preload="metadata" />
+          <a href={attachment.url} target="_blank" rel="noreferrer">
+            {attachmentName}
+          </a>
+        </div>
+      );
+    }
+
+    return (
+      <a
+        className="messageFileAttachment"
+        href={attachment.url}
+        target="_blank"
+        rel="noreferrer"
+        key={`${attachment.url || attachmentName}_${index}`}
+      >
+        <span className="messageFileIcon">📎</span>
+        <span className="messageFileInfo">
+          <strong>{attachmentName}</strong>
+          <small>{formatFileSize(attachment.size)}</small>
+        </span>
+      </a>
+    );
   }
 
   async function deleteMessage(messageId) {
@@ -3883,7 +4166,15 @@ function App() {
                         )}
                       </div>
 
-                      <p>{message.text}</p>
+                      {message.text && <p>{message.text}</p>}
+
+                      {getMessageAttachments(message).length > 0 && (
+                        <div className="messageAttachments">
+                          {getMessageAttachments(message).map((attachment, index) => {
+                            return renderMessageAttachment(attachment, index);
+                          })}
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
@@ -3894,14 +4185,114 @@ function App() {
 
             <form className="messageForm" onSubmit={sendMessage}>
               <input
-                value={messageText}
-                onChange={(event) => setMessageText(event.target.value)}
-                placeholder={`#${activeChannelName} kanalına mesaj gönder`}
+                ref={fileInputRef}
+                className="hiddenFileInput"
+                type="file"
+                multiple
+                accept="image/*,video/*,.pdf,.zip,.rar,.7z,.txt,.doc,.docx,.xls,.xlsx,.ppt,.pptx"
+                onChange={handleFileSelection}
               />
 
-              <button type="submit" disabled={isSending}>
-                {isSending ? "..." : "Gönder"}
-              </button>
+              {(selectedFiles.length > 0 || gifAttachments.length > 0 || isSending) && (
+                <div className="attachmentComposerPanel">
+                  {selectedFiles.map((file, index) => (
+                    <div className="attachmentChip" key={`${file.name}_${file.size}_${index}`}>
+                      <span>{getAttachmentType(file.type, file.name) === "video" ? "🎬" : getAttachmentType(file.type, file.name) === "file" ? "📎" : "🖼️"}</span>
+                      <div>
+                        <strong>{file.name}</strong>
+                        <small>{formatFileSize(file.size)}</small>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeSelectedFile(index)}
+                        disabled={isSending}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+
+                  {gifAttachments.map((gif) => (
+                    <div className="attachmentChip" key={gif.id}>
+                      <span>GIF</span>
+                      <div>
+                        <strong>GIF bağlantısı</strong>
+                        <small>{gif.url}</small>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeGifAttachment(gif.id)}
+                        disabled={isSending}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+
+                  {isSending && uploadProgress > 0 && (
+                    <div className="uploadProgressText">
+                      Yükleniyor: %{uploadProgress}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="messageInputRow">
+                <button
+                  className="messageToolButton"
+                  type="button"
+                  onClick={openFilePicker}
+                  disabled={isSending}
+                  title={`Dosya, resim veya video ekle. Tek dosya limiti: ${MAX_UPLOAD_SIZE_LABEL}`}
+                >
+                  +
+                </button>
+
+                <input
+                  value={messageText}
+                  onChange={(event) => setMessageText(event.target.value)}
+                  placeholder={`#${activeChannelName} kanalına mesaj gönder`}
+                />
+
+                <div className="messageTools">
+                  <button
+                    className="messageToolButton"
+                    type="button"
+                    onClick={() => setEmojiPickerOpen((previous) => !previous)}
+                    disabled={isSending}
+                    title="Emoji ekle"
+                  >
+                    😊
+                  </button>
+                  <button
+                    className="messageToolButton"
+                    type="button"
+                    onClick={addGifByUrl}
+                    disabled={isSending}
+                    title="GIF bağlantısı ekle"
+                  >
+                    GIF
+                  </button>
+                </div>
+
+                <button className="messageSendButton" type="submit" disabled={isSending}>
+                  {isSending ? "..." : "Gönder"}
+                </button>
+              </div>
+
+              {emojiPickerOpen && (
+                <div className="emojiPicker">
+                  {QUICK_EMOJIS.map((emoji) => (
+                    <button
+                      type="button"
+                      key={emoji}
+                      onClick={() => addEmojiToMessage(emoji)}
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+              )}
             </form>
           </>
         ) : (
