@@ -37,7 +37,7 @@ const PRESENCE_HEARTBEAT_MS = 25000;
 const ONLINE_TIMEOUT_MS = 70000;
 const MAX_UPLOAD_SIZE_BYTES = 500 * 1024 * 1024;
 const MAX_UPLOAD_SIZE_LABEL = "500 MB";
-const UPLOAD_TIMEOUT_MS = 120000;
+const UPLOAD_TIMEOUT_MS = 45000;
 const GIF_PROVIDER = (import.meta.env.VITE_GIF_PROVIDER || "giphy").toLowerCase();
 const GIPHY_API_KEY = import.meta.env.VITE_GIPHY_API_KEY || "";
 const TENOR_API_KEY = import.meta.env.VITE_TENOR_API_KEY || "";
@@ -1194,46 +1194,6 @@ function ScreenShareViewerBox({ screenShare, muted, fullscreen = false }) {
   );
 }
 
-function withTimeout(promise, timeoutMs, timeoutMessage) {
-  let timeoutId;
-
-  const timeoutPromise = new Promise((_, reject) => {
-    timeoutId = setTimeout(() => {
-      reject(new Error(timeoutMessage));
-    }, timeoutMs);
-  });
-
-  return Promise.race([promise, timeoutPromise]).finally(() => {
-    clearTimeout(timeoutId);
-  });
-}
-
-function getUploadErrorMessage(error) {
-  const code = error?.code || "";
-
-  if (error?.message?.includes("zaman aşımına")) {
-    return error.message;
-  }
-
-  if (code.includes("unauthorized")) {
-    return "Firebase Storage izni reddetti. Storage Rules publish edilmiş mi kontrol et.";
-  }
-
-  if (code.includes("canceled")) {
-    return "Dosya yükleme iptal edildi.";
-  }
-
-  if (code.includes("quota")) {
-    return "Firebase Storage kotası veya limitleri nedeniyle dosya yüklenemedi.";
-  }
-
-  if (code.includes("retry-limit-exceeded")) {
-    return "Yükleme çok uzun sürdü veya bağlantı koptu. Daha küçük dosyayla tekrar dene.";
-  }
-
-  return "Dosya yüklenemedi. Firebase Storage/Rules ve internet bağlantısını kontrol et.";
-}
-
 function App() {
   const [username, setUsername] = useState(() => {
     return localStorage.getItem("zapchat-username") || "Guest";
@@ -1356,6 +1316,8 @@ function App() {
     currentUser &&
     activeServer.createdByUid === currentUser.uid;
 
+  const currentUserId = currentUser?.uid || null;
+
   const channelCategories = useMemo(() => {
     return getNormalizedCategories(
       activeServer?.channelCategories,
@@ -1472,7 +1434,7 @@ function App() {
 
     return screenSharingParticipants
       .map((participant) => {
-        const isLocalShare = participant.uid === currentUser?.uid;
+        const isLocalShare = participant.uid === currentUserId;
         const remoteScreenStream = remoteScreenStreams.find((screenStream) => {
           return screenStream.uid === participant.uid;
         });
@@ -1497,7 +1459,7 @@ function App() {
   }, [
     activeServerId,
     activeVoiceChannelId,
-    currentUser?.uid,
+    currentUserId,
     currentVoiceParticipants,
     localScreenStream,
     remoteScreenStreams,
@@ -1512,7 +1474,7 @@ function App() {
           getTimestampMillis(member.lastSeen),
           getTimestampMillis(member.presenceUpdatedAt)
         );
-        const isCurrentMember = member.uid === currentUser?.uid;
+        const isCurrentMember = member.uid === currentUserId;
         const isRecentlySeen =
           lastSeenAt > 0 && presenceTick - lastSeenAt < ONLINE_TIMEOUT_MS;
 
@@ -1537,7 +1499,7 @@ function App() {
 
         return (a.displayName || "").localeCompare(b.displayName || "");
       });
-  }, [members, presenceTick, currentUser?.uid]);
+  }, [members, presenceTick, currentUserId]);
 
   const onlineMembers = displayedMembers.filter((member) => {
     return member.isOnline;
@@ -1646,7 +1608,7 @@ function App() {
   }
 
   function renderMemberItem(member) {
-    const isCurrentMember = member.uid === currentUser?.uid;
+    const isCurrentMember = member.uid === currentUserId;
     const roleLabel = getMemberRoleLabel(member);
 
     return (
@@ -3010,60 +2972,78 @@ function App() {
   }
 
   async function uploadFileAttachment(file, fileIndex, totalFiles) {
-    if (!storage) {
-      throw new Error("Firebase Storage bağlantısı bulunamadı. src/firebase.js içinde storage export edildiğinden emin ol.");
-    }
-
-    if (!file) {
-      throw new Error("Yüklenecek dosya bulunamadı.");
-    }
-
-    if (file.size > MAX_UPLOAD_SIZE_BYTES) {
-      throw new Error(`${file.name} ${MAX_UPLOAD_SIZE_LABEL} sınırını aşıyor.`);
-    }
-
     const safeName = sanitizeFileName(file.name);
-    const uniqueFileName = `${Date.now()}_${currentUser.uid}_${fileIndex}_${safeName}`;
+    const uniqueFileName = `${Date.now()}_${currentUser.uid}_${safeName}`;
     const storagePath = `messageAttachments/${activeServerId}/${activeChannel}/${uniqueFileName}`;
     const fileRef = storageReference(storage, storagePath);
-
-    const startedProgress = Math.round((fileIndex / totalFiles) * 100);
-    setUploadProgress(Math.max(1, startedProgress));
-
-    const uploadResult = await withTimeout(
-      uploadBytes(fileRef, file, {
-        contentType: file.type || "application/octet-stream",
-        customMetadata: {
-          serverId: activeServerId,
-          channelId: activeChannel,
-          uploadedByUid: currentUser.uid,
-        },
-      }),
-      UPLOAD_TIMEOUT_MS,
-      "Dosya yükleme zaman aşımına uğradı. Firebase Storage Rules veya bağlantını kontrol et."
+    const startedProgress = Math.max(
+      1,
+      Math.round((fileIndex / totalFiles) * 100)
     );
 
-    const uploadedProgress = Math.round(((fileIndex + 0.75) / totalFiles) * 100);
-    setUploadProgress(uploadedProgress);
+    setUploadProgress(startedProgress);
 
-    const downloadURL = await withTimeout(
-      getDownloadURL(uploadResult.ref),
-      30000,
-      "Dosya yüklendi ama indirme bağlantısı alınamadı. Storage Rules ayarlarını kontrol et."
-    );
-
-    const doneProgress = Math.round(((fileIndex + 1) / totalFiles) * 100);
-    setUploadProgress(doneProgress);
-
-    return {
-      name: file.name,
-      size: file.size,
+    const metadata = {
       contentType: file.type || "application/octet-stream",
-      type: getAttachmentType(file.type, file.name),
-      url: downloadURL,
-      storagePath,
-      source: "upload",
+      customMetadata: {
+        serverId: activeServerId,
+        channelId: activeChannel,
+        uploadedByUid: currentUser.uid,
+      },
     };
+
+    let timeoutId;
+
+    const timeoutPromise = new Promise((_, reject) => {
+      timeoutId = window.setTimeout(() => {
+        reject(
+          new Error(
+            "Dosya yükleme zaman aşımına uğradı. Firebase Storage Rules, Storage bucket veya bağlantı ayarlarını kontrol et."
+          )
+        );
+      }, UPLOAD_TIMEOUT_MS);
+    });
+
+    try {
+      const uploadResult = await Promise.race([
+        uploadBytes(fileRef, file, metadata),
+        timeoutPromise,
+      ]);
+
+      window.clearTimeout(timeoutId);
+      setUploadProgress(
+        Math.min(99, Math.round(((fileIndex + 0.9) / totalFiles) * 100))
+      );
+
+      const downloadURL = await Promise.race([
+        getDownloadURL(uploadResult.ref),
+        new Promise((_, reject) => {
+          window.setTimeout(() => {
+            reject(
+              new Error(
+                "Dosya yüklendi ama indirme bağlantısı alınamadı. Firebase Storage Rules ayarlarını kontrol et."
+              )
+            );
+          }, 12000);
+        }),
+      ]);
+
+      setUploadProgress(Math.round(((fileIndex + 1) / totalFiles) * 100));
+
+      return {
+        name: file.name,
+        size: file.size,
+        contentType: file.type || "application/octet-stream",
+        type: getAttachmentType(file.type, file.name),
+        url: downloadURL,
+        storagePath,
+        source: "upload",
+      };
+    } catch (error) {
+      window.clearTimeout(timeoutId);
+      console.error("Dosya yüklenemedi:", error);
+      throw error;
+    }
   }
 
   async function uploadSelectedFiles() {
@@ -3120,9 +3100,14 @@ function App() {
       setUploadProgress(0);
     } catch (error) {
       console.error("Mesaj gönderilemedi:", error);
-      alert(getUploadErrorMessage(error));
-      setUploadProgress(0);
+      const errorMessage = error?.message || "Bilinmeyen hata";
+      alert(
+        `Mesaj veya dosya gönderilemedi. ${errorMessage}
+
+Firebase Storage'ın aktif olduğundan, Storage Rules'un publish edildiğinden ve VITE_FIREBASE_STORAGE_BUCKET değerinin doğru olduğundan emin ol.`
+      );
     } finally {
+      setUploadProgress(0);
       setIsSending(false);
     }
   }
