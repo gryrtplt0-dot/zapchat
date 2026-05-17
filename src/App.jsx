@@ -20,12 +20,7 @@ import {
   updateDoc,
   where,
 } from "firebase/firestore";
-import {
-  getDownloadURL,
-  ref as storageReference,
-  uploadBytes,
-} from "firebase/storage";
-import { auth, db, storage } from "./firebase";
+import { auth, db } from "./firebase";
 import "./App.css";
 
 const ICE_SERVERS = [
@@ -38,6 +33,9 @@ const ONLINE_TIMEOUT_MS = 70000;
 const MAX_UPLOAD_SIZE_BYTES = 500 * 1024 * 1024;
 const MAX_UPLOAD_SIZE_LABEL = "500 MB";
 const UPLOAD_TIMEOUT_MS = 45000;
+const CLOUDINARY_CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || "";
+const CLOUDINARY_UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET || "";
+const INLINE_IMAGE_FALLBACK_LIMIT_BYTES = 900 * 1024;
 const GIF_PROVIDER = (import.meta.env.VITE_GIF_PROVIDER || "giphy").toLowerCase();
 const GIPHY_API_KEY = import.meta.env.VITE_GIPHY_API_KEY || "";
 const TENOR_API_KEY = import.meta.env.VITE_TENOR_API_KEY || "";
@@ -1580,13 +1578,6 @@ function App() {
     return "file";
   }
 
-  function sanitizeFileName(fileName) {
-    return String(fileName || "dosya")
-      .replace(/[^a-zA-Z0-9ğüşıöçĞÜŞİÖÇ._-]+/g, "-")
-      .replace(/-+/g, "-")
-      .slice(0, 90);
-  }
-
   function getMessageAttachments(message) {
     return Array.isArray(message.attachments) ? message.attachments : [];
   }
@@ -2971,11 +2962,125 @@ function App() {
     });
   }
 
+  function canUseInlineImageFallback(file) {
+    return file.type.startsWith("image/") && file.size <= INLINE_IMAGE_FALLBACK_LIMIT_BYTES;
+  }
+
+  function readFileAsDataUrl(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      const timeoutId = window.setTimeout(() => {
+        reader.abort();
+        reject(new Error("Resim geçici mesaj verisine çevrilemedi."));
+      }, 10000);
+
+      reader.onload = () => {
+        window.clearTimeout(timeoutId);
+        resolve(reader.result);
+      };
+
+      reader.onerror = () => {
+        window.clearTimeout(timeoutId);
+        reject(new Error("Resim okunamadı."));
+      };
+
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function createInlineImageAttachment(file) {
+    const dataUrl = await readFileAsDataUrl(file);
+
+    return {
+      name: file.name,
+      size: file.size,
+      contentType: file.type || "image/*",
+      type: getAttachmentType(file.type, file.name),
+      url: dataUrl,
+      storagePath: null,
+      source: "inline-fallback",
+      inline: true,
+    };
+  }
+
+  function uploadFileToCloudinary(file, fileIndex, totalFiles) {
+    if (!CLOUDINARY_CLOUD_NAME || !CLOUDINARY_UPLOAD_PRESET) {
+      throw new Error(
+        "Cloudinary ayarları eksik. VITE_CLOUDINARY_CLOUD_NAME ve VITE_CLOUDINARY_UPLOAD_PRESET değerlerini .env.local ve Vercel Environment Variables içine ekle."
+      );
+    }
+
+    const uploadUrl = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/auto/upload`;
+    const formData = new FormData();
+
+    formData.append("file", file);
+    formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
+    formData.append("tags", "zapchat,message-attachment");
+    formData.append(
+      "context",
+      `serverId=${activeServerId}|channelId=${activeChannel}|uploadedByUid=${currentUser.uid}`
+    );
+
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+
+      xhr.open("POST", uploadUrl);
+      xhr.timeout = UPLOAD_TIMEOUT_MS;
+
+      xhr.upload.onprogress = (event) => {
+        if (!event.lengthComputable) {
+          return;
+        }
+
+        const fileProgress = event.loaded / event.total;
+        const totalProgress = Math.round(
+          ((fileIndex + fileProgress) / totalFiles) * 100
+        );
+
+        setUploadProgress(Math.max(1, Math.min(99, totalProgress)));
+      };
+
+      xhr.onload = () => {
+        let responseData;
+
+        try {
+          responseData = JSON.parse(xhr.responseText || "{}");
+        } catch {
+          reject(new Error("Cloudinary yanıtı okunamadı."));
+          return;
+        }
+
+        if (xhr.status < 200 || xhr.status >= 300) {
+          reject(
+            new Error(
+              responseData?.error?.message ||
+                `Cloudinary dosya yüklemeyi reddetti. HTTP ${xhr.status}`
+            )
+          );
+          return;
+        }
+
+        if (!responseData.secure_url) {
+          reject(new Error("Cloudinary dosya linki döndürmedi."));
+          return;
+        }
+
+        resolve(responseData);
+      };
+
+      xhr.onerror = () => {
+        reject(new Error("Cloudinary bağlantısı kurulamadı."));
+      };
+
+      xhr.ontimeout = () => {
+        reject(new Error("Cloudinary dosya yükleme zaman aşımına uğradı."));
+      };
+
+      xhr.send(formData);
+    });
+  }
+
   async function uploadFileAttachment(file, fileIndex, totalFiles) {
-    const safeName = sanitizeFileName(file.name);
-    const uniqueFileName = `${Date.now()}_${currentUser.uid}_${safeName}`;
-    const storagePath = `messageAttachments/${activeServerId}/${activeChannel}/${uniqueFileName}`;
-    const fileRef = storageReference(storage, storagePath);
     const startedProgress = Math.max(
       1,
       Math.round((fileIndex / totalFiles) * 100)
@@ -2983,65 +3088,34 @@ function App() {
 
     setUploadProgress(startedProgress);
 
-    const metadata = {
-      contentType: file.type || "application/octet-stream",
-      customMetadata: {
-        serverId: activeServerId,
-        channelId: activeChannel,
-        uploadedByUid: currentUser.uid,
-      },
-    };
-
-    let timeoutId;
-
-    const timeoutPromise = new Promise((_, reject) => {
-      timeoutId = window.setTimeout(() => {
-        reject(
-          new Error(
-            "Dosya yükleme zaman aşımına uğradı. Firebase Storage Rules, Storage bucket veya bağlantı ayarlarını kontrol et."
-          )
-        );
-      }, UPLOAD_TIMEOUT_MS);
-    });
-
     try {
-      const uploadResult = await Promise.race([
-        uploadBytes(fileRef, file, metadata),
-        timeoutPromise,
-      ]);
-
-      window.clearTimeout(timeoutId);
-      setUploadProgress(
-        Math.min(99, Math.round(((fileIndex + 0.9) / totalFiles) * 100))
-      );
-
-      const downloadURL = await Promise.race([
-        getDownloadURL(uploadResult.ref),
-        new Promise((_, reject) => {
-          window.setTimeout(() => {
-            reject(
-              new Error(
-                "Dosya yüklendi ama indirme bağlantısı alınamadı. Firebase Storage Rules ayarlarını kontrol et."
-              )
-            );
-          }, 12000);
-        }),
-      ]);
+      const uploadResult = await uploadFileToCloudinary(file, fileIndex, totalFiles);
 
       setUploadProgress(Math.round(((fileIndex + 1) / totalFiles) * 100));
 
       return {
         name: file.name,
-        size: file.size,
+        size: uploadResult.bytes || file.size,
         contentType: file.type || "application/octet-stream",
         type: getAttachmentType(file.type, file.name),
-        url: downloadURL,
-        storagePath,
-        source: "upload",
+        url: uploadResult.secure_url,
+        storagePath: uploadResult.public_id || null,
+        cloudinaryPublicId: uploadResult.public_id || null,
+        cloudinaryResourceType: uploadResult.resource_type || null,
+        cloudinaryFormat: uploadResult.format || null,
+        source: "cloudinary",
       };
     } catch (error) {
-      window.clearTimeout(timeoutId);
-      console.error("Dosya yüklenemedi:", error);
+      console.error("Cloudinary dosya yüklenemedi:", error);
+
+      if (canUseInlineImageFallback(file)) {
+        console.warn(
+          "Cloudinary yüklemesi başarısız oldu, küçük resim inline fallback ile gönderiliyor."
+        );
+        setUploadProgress(Math.round(((fileIndex + 1) / totalFiles) * 100));
+        return createInlineImageAttachment(file);
+      }
+
       throw error;
     }
   }
@@ -3104,7 +3178,7 @@ function App() {
       alert(
         `Mesaj veya dosya gönderilemedi. ${errorMessage}
 
-Firebase Storage'ın aktif olduğundan, Storage Rules'un publish edildiğinden ve VITE_FIREBASE_STORAGE_BUCKET değerinin doğru olduğundan emin ol.`
+Cloudinary'ın aktif olduğundan, Cloudinary upload preset'un publish edildiğinden ve VITE_FIREBASE_STORAGE_BUCKET değerinin doğru olduğundan emin ol. Küçük resimler için yedek gönderim var ama büyük dosya/video için Storage'ın çalışması gerekir.`
       );
     } finally {
       setUploadProgress(0);
