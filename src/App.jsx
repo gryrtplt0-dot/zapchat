@@ -1207,7 +1207,7 @@ function App() {
   const [messageText, setMessageText] = useState("");
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [gifAttachments, setGifAttachments] = useState([]);
-  const [uploadProgress, setUploadProgress] = useState(0);
+  const [, setUploadProgress] = useState(0);
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
   const [emojiSearchText, setEmojiSearchText] = useState("");
   const [activeEmojiCategoryId, setActiveEmojiCategoryId] = useState("smileys");
@@ -5755,11 +5755,6 @@ Cloudinary'ın aktif olduğundan, Cloudinary upload preset'un publish edildiğin
                     </div>
                   ))}
 
-                  {isSending && uploadProgress > 0 && (
-                    <div className="uploadProgressText">
-                      Yükleniyor: %{uploadProgress}
-                    </div>
-                  )}
                 </div>
               )}
 

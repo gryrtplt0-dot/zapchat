@@ -1101,12 +1101,6 @@ input {
   color: #ffb0b0;
 }
 
-.uploadProgressText {
-  width: 100%;
-  color: #ffcf7a;
-  font-size: 12px;
-  font-weight: 800;
-}
 
 .messageInputRow {
   display: flex;
